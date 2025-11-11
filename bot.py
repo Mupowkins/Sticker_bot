@@ -1,9 +1,11 @@
 import logging
 import os
+import asyncio
 from telegram import (
     Update, 
     InputSticker, 
-    BotCommand
+    BotCommand,
+    StickerSet
 )
 from telegram.ext import (
     Application, 
@@ -13,6 +15,7 @@ from telegram.ext import (
     ContextTypes, 
     ConversationHandler
 )
+from telegram.constants import StickerFormat
 
 # Настройки
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -158,8 +161,54 @@ async def get_new_short_name(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         await update.message.reply_text("🔄 Начинаю создание копии...")
         
-        # Здесь будет логика создания стикерпака
-        # Временно возвращаем успешное сообщение
+        # Определяем тип стикеров на основе первого стикера
+        first_sticker = original_sticker_set.stickers[0]
+        
+        # Используем правильный формат в зависимости от типа стикера
+        if hasattr(first_sticker, 'is_video') and first_sticker.is_video:
+            sticker_format = StickerFormat.VIDEO
+        elif hasattr(first_sticker, 'is_animated') and first_sticker.is_animated:
+            sticker_format = StickerFormat.ANIMATED
+        else:
+            sticker_format = StickerFormat.STATIC
+        
+        # Создаем первый стикер для нового набора
+        input_sticker = InputSticker(
+            sticker=first_sticker.file_id,
+            emoji_list=first_sticker.emoji if hasattr(first_sticker, 'emoji') else ['🙂']
+        )
+        
+        # СОЗДАЕМ НОВЫЙ СТИКЕРПАК с правильными параметрами
+        await context.bot.create_new_sticker_set(
+            user_id=user_id,
+            name=new_short_name,
+            title=new_title,
+            stickers=[input_sticker],
+            sticker_format=sticker_format
+        )
+        
+        # Добавляем остальные стикеры
+        success_count = 1
+        for i, sticker in enumerate(original_sticker_set.stickers[1:], 2):
+            try:
+                input_sticker = InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=sticker.emoji if hasattr(sticker, 'emoji') else ['🙂']
+                )
+                
+                await context.bot.add_sticker_to_set(
+                    user_id=user_id,
+                    name=new_short_name,
+                    sticker=input_sticker
+                )
+                success_count += 1
+                
+                if i % 10 == 0:
+                    await update.message.reply_text(f"📦 Скопировано {i} стикеров...")
+                    
+            except Exception as e:
+                logger.warning(f"Не удалось добавить стикер {i}: {e}")
+                continue
         
         sticker_link = f"https://t.me/addstickers/{new_short_name}"
         
@@ -167,14 +216,19 @@ async def get_new_short_name(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🎉 Стикерпак успешно создан!\n\n"
             f"📛 Название: {new_title}\n"
             f"🔗 Ссылка: {sticker_link}\n"
-            f"📊 Стикеров: {len(original_sticker_set.stickers)}\n\n"
-            f"✨ Функция полного копирования будет добавлена в следующем обновлении!\n\n"
-            f"🚀 Чтобы начать заново, отправь новый стикер или ссылку."
+            f"📊 Скопировано стикеров: {success_count}/{len(original_sticker_set.stickers)}\n\n"
+            f"✨ Добавь стикерпак к себе!\n\n"
+            f"🚀 Чтобы создать еще один, отправь новый стикер или ссылку."
         )
         
     except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+        logger.error(f"Ошибка создания: {e}")
+        error_msg = str(e)
+        if "sticker set name is already occupied" in error_msg:
+            await update.message.reply_text("❌ Это имя уже занято. Придумай другое:")
+            return GET_NEW_SHORT_NAME
+        else:
+            await update.message.reply_text(f"❌ Ошибка при создании: {error_msg}")
     
     finally:
         context.user_data.clear()
