@@ -251,4 +251,4 @@ if __name__ == "__main__":
     flask_thread.start()
     
     logging.info("Запуск основного asyncio-бота...")
-    asyncio.run(main())
+    asyncio.run(main)
