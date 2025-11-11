@@ -94,13 +94,13 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидаю 15-20 секунд...")
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидаю 5-10 секунд...")
         
-        # СЛУЧАЙНАЯ ЗАДЕРЖКА 15-20 секунд
-        first_delay = random.uniform(15.0, 20.0)
+        # СЛУЧАЙНАЯ ЗАДЕРЖКА 5-10 секунд
+        first_delay = random.uniform(5.0, 10.0)
         await asyncio.sleep(first_delay)
 
-        # Остальные пачки по 10 стикеров со случайными задержками 15-20 секунд
+        # Остальные пачки по 10 стикеров со случайными задержками 5-10 секунд
         batch_size = 10
         batches = [
             (51, 60), (61, 70), (71, 80), (81, 90), 
@@ -129,11 +129,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 )
             
             current_end = min(end, total_stickers)
-            await msg.edit_text(f"✅ Добавлено {current_end}/120 стикеров\nОжидаю 15-20 секунд...")
+            await msg.edit_text(f"✅ Добавлено {current_end}/120 стикеров\nОжидаю 5-10 секунд...")
             
-            # СЛУЧАЙНАЯ ЗАДЕРЖКА 15-20 секунд между пачками
+            # СЛУЧАЙНАЯ ЗАДЕРЖКА 5-10 секунд между пачками
             if current_end < total_stickers:
-                delay = random.uniform(15.0, 20.0)
+                delay = random.uniform(5.0, 10.0)
                 await asyncio.sleep(delay)
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
@@ -144,7 +144,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Флуд-контроль! Попробуй через 2 минуты.")
+            await msg.edit_text("❌ Флуд-контроль! Попробуй через 1 минуту.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
