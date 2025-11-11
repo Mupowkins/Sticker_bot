@@ -249,7 +249,10 @@ async def main():
             # Очищаем предыдущие вебхуки
             await application.bot.delete_webhook(drop_pending_updates=True)
             
-            # Запускаем вебхук без указания URL - будет работать локально на Render
+            # ИНИЦИАЛИЗИРУЕМ приложение перед запуском
+            await application.initialize()
+            
+            # Запускаем вебхук без указания URL
             await application.run_webhook(
                 listen="0.0.0.0",
                 port=port,
@@ -259,6 +262,10 @@ async def main():
             logger.info("💻 Запуск в режиме Polling (локально)")
             # Очищаем предыдущие обновления
             await application.bot.delete_webhook(drop_pending_updates=True)
+            
+            # ИНИЦИАЛИЗИРУЕМ приложение перед запуском
+            await application.initialize()
+            
             await application.run_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=True
