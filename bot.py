@@ -12,26 +12,26 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 
+# --- (!!!) ИЗМЕНЕНИЕ ЗДЕСЬ (!!!) ---
+# Нам нужно импортировать DefaultBotProperties
+from aiogram.client.bot import DefaultBotProperties 
+
 # --- Конфигурация ---
-
-# !!! ВНИМАНИЕ: ТЫ ПОПРОСИЛ ВСТАВИТЬ ТОКЕН НАПРЯМУЮ !!!
-# ЭТОТ КОД НЕ БУДЕТ ИСКАТЬ ТВОЙ НОВЫЙ ТОКЕН В НАСТРОЙКАХ RENDER.COM
-# ОН ВСЕГДА БУДЕТ ИСПОЛЬЗОВАТЬ ТОЛЬКО ЭТОТ СТАРЫЙ НЕРАБОЧИЙ ТОКЕН.
-BOT_TOKEN = "8094703198:AAEszw3K_62yU3oHR0cW3RHvXfxBeUJhy6A"
-
-# Эта строка (правильная для Render) теперь НЕ используется:
-# BOT_TOKEN = os.environ.get("BOT_TOKEN") 
+BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 
 if not BOT_TOKEN:
-    # Эта проверка теперь почти бесполезна, но мы ее оставим
-    logging.critical("Критическая ошибка: Токен не найден.")
+    logging.critical("Критическая ошибка: Токен BOT_TOKEN не найден в переменных окружения.")
     exit()
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+# --- (!!!) ИЗМЕНЕНИЕ ЗДЕСЬ (!!!) ---
+# Старый код:
+# bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+#
+# Новый код для aiogram 3.7+
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
 dp = Dispatcher()
 
 
@@ -42,6 +42,7 @@ class CopyPack(StatesGroup):
 
 
 # --- Обработчики (Хэндлеры) ---
+# (Тут все твои хэндлеры, они не изменились)
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
@@ -173,60 +174,4 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 if i % 10 == 0 or i == len(stickers_to_add) - 1:
                     await msg.edit_text(f"Копирую... {i+1}/{len(stickers_to_add)}")
                 
-                await asyncio.sleep(0.1) 
-
-        await msg.edit_text(
-            f"✅ Успех! Я создал твой новый стикерпак.\n\n"
-            f"Вот ссылка: t.me/addstickers/{new_name}"
-        )
-
-    except TelegramBadRequest as e:
-        #... (вся обработка ошибок)...
-        if "sticker set name is already taken" in str(e):
-            await msg.edit_text(f"❌ Ошибка. Имя (ссылка) `{new_name}` уже занято. Попробуй другое.")
-            return 
-        elif "STICKERSET_INVALID" in str(e):
-            await msg.edit_text("❌ Ошибка. Оригинальный стикерпак не найден. Возможно, ссылка битая.")
-        elif "USER_ID_INVALID" in str(e):
-             await msg.edit_text("❌ Ошибка. Не могу найти твой ID. Странная ошибка.")
-        else:
-            await msg.edit_text(f"❌ Произошла неизвестная ошибка Telegram: {e}")
-            logging.error(f"Ошибка при копировании: {e}")
-    
-    except Exception as e:
-        await msg.edit_text(f"❌ Произошла критическая ошибка: {e}")
-        logging.exception("Критическая ошибка в get_new_name_and_copy")
-
-    finally:
-        await state.clear()
-
-
-@dp.message()
-async def handle_other_messages(message: Message):
-    await message.answer("Я не понимаю. Пожалуйста, отправь мне стикер или ссылку на стикерпак.")
-
-
-# --- (!!!) БЛОК ДЛЯ RENDER (!!!) ---
-app = Flask(__name__)
-
-@app.route('/')
-def i_am_alive():
-    return "Bot is alive!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080)) 
-    app.run(host='0.0.0.0', port=port)
-
-# --- Запуск Бота ---
-async def main():
-    logging.info("Бот запускается (через main)...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    logging.info("Запуск Flask-потока...")
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-    
-    logging.info("Запуск основного asyncio-бота...")
-    asyncio.run(main())
+                await asyncio.
