@@ -11,17 +11,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
-# Импорт для исправления aiogram 3.7+
 from aiogram.client.bot import DefaultBotProperties 
 
 # --- Конфигурация ---
-
-# !!! KАК ТЫ ПОПРОСИЛ: 
-# Токен вставлен напрямую в код.
+# Токен вставлен напрямую, как ты просил
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
-
-# Эта строка (правильная для Render) теперь НЕ используется:
-# BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 
 if not BOT_TOKEN:
     logging.critical("Критическая ошибка: Токен не найден.")
@@ -30,7 +24,7 @@ if not BOT_TOKEN:
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# ИСПРАВЛЕНИЕ: Используем DefaultBotProperties для указания parse_mode
+# Используем DefaultBotProperties для указания parse_mode
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -110,7 +104,7 @@ async def get_new_title(message: Message, state: FSMContext):
     Получает новое название (Title) от пользователя.
     """
     me = await bot.get_me()
-    bot_username = me.username
+    bot_username = me.username # Это будет 'MupowkinsBOT'
     
     await state.update_data(new_title=message.text)
     await state.set_state(CopyPack.waiting_for_new_name)
@@ -121,7 +115,8 @@ async def get_new_title(message: Message, state: FSMContext):
         "• Только латинские буквы (a-z), цифры (0-9) и '_'.\n"
         "• Должно быть уникальным (не занятым).\n"
         f"• Имя **должно** заканчиваться на `_by_{bot_username}` (юзернейм этого бота).\n\n"
-        f"Пример: `my_cool_pack_by_{bot_username}`"
+        f"<b>Подсказка:</b> Можешь просто отправить имя пака (например, `Moi_Stikeri`), "
+        f"и я **сам добавлю** `_by_{bot_username}` в конец."
     )
 
 
@@ -133,20 +128,35 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     original_set_name = user_data.get("original_set_name")
     new_title = user_data.get("new_title")
-    new_name = message.text
+    new_name = message.text.strip() # .strip() убирает случайные пробелы в начале/конце
     user_id = message.from_user.id
 
-    # Проверяем, что пользователь ввел имя пака по правилам Telegram
+    # --- (!!!) ИЗМЕНЕНИЕ №1: АВТО-ДОБАВЛЕНИЕ СУФФИКСА (!!!) ---
+    
+    # Получаем юзернейм бота для суффикса
     me = await bot.get_me()
-    bot_suffix = f"_by_{me.username}"
-    if not new_name.endswith(bot_suffix):
-        await message.answer(
-            f"❌ Ошибка. Имя пака **должно** заканчиваться на `{bot_suffix}`.\n\n"
-            f"Попробуй еще раз. Например: `{new_name}{bot_suffix}`"
-        )
-        return
-
-    msg = await message.answer("Принято. Начинаю процесс копирования... Это может занять несколько минут для больших паков.")
+    bot_suffix = f"_by_{me.username}" # me.username будет 'MupowkinsBOT'
+    
+    # 1. Проверяем, если суффикс уже есть и он ПРАВИЛЬНЫЙ
+    if new_name.endswith(bot_suffix):
+        pass # Имя уже идеальное
+    
+    # 2. Проверяем, если пользователь ввел суффикс в НИЖНЕМ РЕГИСТРЕ
+    elif new_name.lower().endswith(bot_suffix.lower()):
+        # Отсекаем неправильный суффикс (той же длины, что и правильный)
+        new_name = new_name[:-len(bot_suffix)]
+        # Добавляем правильный суффикс
+        new_name = new_name + bot_suffix
+        await message.answer(f"Я заметил ошибку в регистре суффикса. Исправляю имя на: <b>{new_name}</b>")
+    
+    # 3. Если суффикса нет вообще
+    else:
+        new_name = new_name + bot_suffix
+        await message.answer(f"Ты забыл суффикс. Автоматически добавляю его. Новое имя: <b>{new_name}</b>")
+    
+    # Старая проверка больше не нужна
+    
+    msg = await message.answer(f"Принято. Начинаю процесс копирования для <b>{new_name}</b>... Это может занять несколько минут.")
 
     try:
         # 1. Получаем ИНФОРМАЦИЮ об оригинальном паке
@@ -162,10 +172,16 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         # 3. Собираем "список" стикеров для загрузки
         stickers_to_add = []
         for sticker in original_set.stickers:
+            
+            # --- (!!!) ИЗМЕНЕНИЕ №2: СМАЙЛИК "🤩" (!!!) ---
+            current_emoji = sticker.emoji
+            if not current_emoji:
+                current_emoji = "🤩" # Эмодзи по умолчанию
+                
             stickers_to_add.append(
                 InputSticker(
                     sticker=sticker.file_id, 
-                    emoji_list=[sticker.emoji]
+                    emoji_list=[current_emoji] # Используем проверенную переменную
                 )
             )
 
@@ -185,15 +201,19 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         
         # 5. Добавляем ОСТАЛЬНЫЕ стикеры
         if len(stickers_to_add) > 1:
+            # stickers_to_add[1:] - это срез со второго стикера до последнего
+            # 'sticker' - это переменная цикла, которая хранит InputSticker
             for i, sticker in enumerate(stickers_to_add[1:], start=1):
                 await bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_name,
-                    sticker=sticker
+                    sticker=sticker # ИСПРАВЛЕНО: передаем сам 'sticker' из цикла
                 )
-                # Редактируем сообщение, чтобы показать прогресс
-                if i % 10 == 0 or i == len(stickers_to_add) - 1: # Каждые 10 стикеров
-                    await msg.edit_text(f"Копирую... {i+1}/{len(stickers_to_add)}")
+                # Показываем прогресс
+                # (i+1) т.к. i начинается с 1 (второй стикер), а 0-й уже добавлен
+                total_stickers = len(stickers_to_add)
+                if i % 10 == 0 or (i+1) == total_stickers: # Каждые 10 стикеров или в конце
+                    await msg.edit_text(f"Копирую... {i+1}/{total_stickers}")
                 
                 await asyncio.sleep(0.1) # Задержка от спам-лимитов
 
@@ -206,7 +226,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
             await msg.edit_text(f"❌ Ошибка. Имя (ссылка) `{new_name}` уже занято. Попробуй другое.")
-            return 
+            return # Не сбрасываем состояние, даем попробовать еще раз
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Ошибка. Оригинальный стикерпак не найден. Возможно, ссылка битая.")
         elif "USER_ID_INVALID" in str(e):
@@ -220,8 +240,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         logging.exception("Критическая ошибка в get_new_name_and_copy")
 
     finally:
-        # Очищаем состояние в любом случае
-        await state.clear()
+        # Очищаем состояние в любом случае (кроме ошибки 'name taken')
+        current_state = await state.get_state()
+        if current_state is not None:
+            await state.clear()
 
 
 @dp.message()
