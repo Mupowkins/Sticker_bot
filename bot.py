@@ -11,22 +11,26 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
-# Это исправление для aiogram 3.7+
 from aiogram.client.bot import DefaultBotProperties 
 
 # --- Конфигурация ---
-# Код ищет токен в "Environment" на Render.com.
-# Ты УЖЕ настроил это. Это ПРАВИЛЬНО.
-BOT_TOKEN = os.environ.get("BOT_TOKEN") 
+
+# !!! KАК ТЫ ПОПРОСИЛ: 
+# Токен вставлен напрямую в код.
+# Код больше НЕ будет искать токен в настройках Render.com.
+BOT_TOKEN = "8094703198:AAEszw3K_62yU3oHR0cW3RHvXfxBeUJhy6A"
+
+# Эта строка (правильная для Render) теперь НЕ используется:
+# BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 
 if not BOT_TOKEN:
-    logging.critical("Критическая ошибка: Токен BOT_TOKEN не найден в переменных окружения.")
+    logging.critical("Критическая ошибка: Токен не найден.")
     exit()
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Это исправление для aiogram 3.7+
+# ИСПРАВЛЕНИЕ: Используем DefaultBotProperties для указания parse_mode
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -191,8 +195,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 if i % 10 == 0 or i == len(stickers_to_add) - 1: # Каждые 10 стикеров
                     await msg.edit_text(f"Копирую... {i+1}/{len(stickers_to_add)}")
                 
-                # ВОТ СТРОКА 177, КОТОРАЯ У ТЕБЯ ЛОМАЛАСЬ
-                # УБЕДИСЬ, ЧТО ОНА СКОПИРОВАНА ВЕРНО
                 await asyncio.sleep(0.1) # Задержка от спам-лимитов
 
         # 6. Готово!
