@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import re
-import os  # <-- ДОБАВЛЕНО: для работы с переменными окружения
+import os  
+import threading # <-- ДОБАВЛЕНО: для "обмана" Render
+from flask import Flask # <-- ДОБАВЛЕНО: для "обмана" Render
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
@@ -11,19 +13,13 @@ from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 
 # --- Конфигурация ---
-
-# !!! БЕРЕМ ТОКЕН ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ RENDER.COM
-# НЕ ВПИСЫВАЙ ЕГО СЮДА!
 BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 
 if not BOT_TOKEN:
     logging.critical("Критическая ошибка: Токен BOT_TOKEN не найден в переменных окружения.")
     exit()
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
-
-# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
@@ -35,12 +31,11 @@ class CopyPack(StatesGroup):
 
 
 # --- Обработчики (Хэндлеры) ---
+# (Тут все твои хэндлеры: cmd_start, handle_sticker, handle_link и т.д.)
+# (Я их не менял, просто пролистай ниже)
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    """
-    Обработчик команды /start
-    """
     await message.answer(
         "Привет! 👋 Я бот для копирования стикерпаков.\n\n"
         "Отправь мне **любой стикер** из пака, который хочешь скопировать, "
@@ -50,9 +45,6 @@ async def cmd_start(message: Message):
 
 @dp.message(F.sticker)
 async def handle_sticker(message: Message, state: FSMContext):
-    """
-    Ловит любой отправленный стикер.
-    """
     if not message.sticker.set_name:
         await message.answer("У этого стикера нет 'set_name'. Кажется, это не часть пака, а кастомный стикер. Я не могу его скопировать.")
         return
@@ -60,7 +52,6 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.update_data(original_set_name=message.sticker.set_name)
     await state.set_state(CopyPack.waiting_for_new_title)
     
-    # Используем try-except на случай, если у пака нет title
     try:
         pack = await bot.get_sticker_set(message.sticker.set_name)
         pack_title = pack.title
@@ -74,9 +65,6 @@ async def handle_sticker(message: Message, state: FSMContext):
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
 async def handle_link(message: Message, state: FSMContext):
-    """
-    Ловит ссылку на стикерпак.
-    """
     original_set_name = re.search(r"t\.me/addstickers/([a-zA-Z0-9_]+)", message.text).group(1)
 
     if not original_set_name:
@@ -86,7 +74,6 @@ async def handle_link(message: Message, state: FSMContext):
     await state.update_data(original_set_name=original_set_name)
     await state.set_state(CopyPack.waiting_for_new_title)
     
-    # Используем try-except на случай, если у пака нет title
     try:
         pack = await bot.get_sticker_set(original_set_name)
         pack_title = pack.title
@@ -101,10 +88,6 @@ async def handle_link(message: Message, state: FSMContext):
 
 @dp.message(CopyPack.waiting_for_new_title)
 async def get_new_title(message: Message, state: FSMContext):
-    """
-    Получает новое название (Title) от пользователя.
-    """
-    # Получаем ID бота, чтобы вставить в подсказку
     me = await bot.get_me()
     bot_username = me.username
     
@@ -123,16 +106,12 @@ async def get_new_title(message: Message, state: FSMContext):
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
-    """
-    Получает новую ссылку (Short Name) и запускает процесс копирования.
-    """
     user_data = await state.get_data()
     original_set_name = user_data.get("original_set_name")
     new_title = user_data.get("new_title")
     new_name = message.text
     user_id = message.from_user.id
 
-    # Проверяем, что пользователь ввел имя пака по правилам Telegram
     me = await bot.get_me()
     bot_suffix = f"_by_{me.username}"
     if not new_name.endswith(bot_suffix):
@@ -145,17 +124,14 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     msg = await message.answer("Принято. Начинаю процесс копирования... Это может занять несколько минут для больших паков.")
 
     try:
-        # 1. Получаем ИНФОРМАЦИЮ об оригинальном паке
         original_set = await bot.get_sticker_set(original_set_name)
 
-        # 2. Определяем ТИП пака
         sticker_format = "static"
         if original_set.is_animated:
             sticker_format = "animated"
         elif original_set.is_video:
             sticker_format = "video"
         
-        # 3. Собираем "список" стикеров для загрузки
         stickers_to_add = []
         for sticker in original_set.stickers:
             stickers_to_add.append(
@@ -170,7 +146,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # 4. Создаем НОВЫЙ пак
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
@@ -179,7 +154,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
         
-        # 5. Добавляем ОСТАЛЬНЫЕ стикеры
         if len(stickers_to_add) > 1:
             for i, sticker in enumerate(stickers_to_add[1:], start=1):
                 await bot.add_sticker_to_set(
@@ -187,13 +161,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     name=new_name,
                     sticker=sticker
                 )
-                # Редактируем сообщение, чтобы показать прогресс
-                if i % 10 == 0 or i == len(stickers_to_add) - 1: # Каждые 10 стикеров
+                if i % 10 == 0 or i == len(stickers_to_add) - 1:
                     await msg.edit_text(f"Копирую... {i+1}/{len(stickers_to_add)}")
                 
-                await asyncio.sleep(0.1) # Задержка от спам-лимитов
+                await asyncio.sleep(0.1) 
 
-        # 6. Готово!
         await msg.edit_text(
             f"✅ Успех! Я создал твой новый стикерпак.\n\n"
             f"Вот ссылка: t.me/addstickers/{new_name}"
@@ -221,11 +193,24 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
 
 @dp.message()
 async def handle_other_messages(message: Message):
-    """
-    Ловит все остальные сообщения
-    """
     await message.answer("Я не понимаю. Пожалуйста, отправь мне стикер или ссылку на стикерпак.")
 
+
+# --- (!!!) НОВЫЙ БЛОК ДЛЯ RENDER (!!!) ---
+
+# Создаем "пустышку" Flask
+app = Flask(__name__)
+
+@app.route('/')
+def i_am_alive():
+    """Render будет стучаться сюда, чтобы проверить, 'жив' ли сервис"""
+    return "Bot is alive!"
+
+def run_flask():
+    """Запускает веб-сервер в отдельном потоке"""
+    # Render сам передаст нужный порт в переменную окружения PORT
+    port = int(os.environ.get("PORT", 8080)) 
+    app.run(host='0.0.0.0', port=port)
 
 # --- Запуск Бота ---
 
@@ -233,10 +218,17 @@ async def main():
     """
     Главная функция для запуска бота.
     """
-    # Эта проверка на токен теперь в самом верху
-    logging.info("Бот запускается...")
+    logging.info("Бот запускается (через main)...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    logging.info("Запуск Flask-потока...")
+    # 1. Запускаем веб-сервер в отдельном потоке
+    # Он будет отвечать Render, что все хорошо
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+    
+    # 2. Запускаем нашего бота
+    logging.info("Запуск основного asyncio-бота...")
     asyncio.run(main())
