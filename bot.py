@@ -1,52 +1,3 @@
-import asyncio
-import logging
-import re
-import os  
-import threading 
-from flask import Flask 
-from aiogram import Bot, Dispatcher, F, types
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, InputSticker
-from aiogram.exceptions import TelegramBadRequest
-
-BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
-
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()  # ← ДОЛЖНО БЫТЬ ПЕРЕД ВСЕМИ ОБРАБОТЧИКАМИ
-
-class CopyPack(StatesGroup):
-    waiting_for_new_name = State()
-
-@dp.message(CommandStart())
-async def cmd_start(message: Message):
-    await message.answer("Отправь стикер или ссылку на стикерпак")
-
-@dp.message(F.sticker)
-async def handle_sticker(message: Message, state: FSMContext):
-    if not message.sticker.set_name:
-        await message.answer("Этот стикер не из пака")
-        return
-    
-    await state.update_data(original_set_name=message.sticker.set_name)
-    await state.set_state(CopyPack.waiting_for_new_name)
-    
-    me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
-
-@dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
-async def handle_link(message: Message, state: FSMContext):
-    original_set_name = re.search(r"t\.me/addstickers/([a-zA-Z0-9_]+)", message.text).group(1)
-    
-    await state.update_data(original_set_name=original_set_name)
-    await state.set_state(CopyPack.waiting_for_new_name)
-    
-    me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
-
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
@@ -70,11 +21,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # Разбиваем на пачки по 50 стикеров
-        batch_size = 50
+        # Разбиваем на пачки по 10 стикеров (меньше = меньше запросов)
+        batch_size = 10
         all_stickers = original_set.stickers
         
-        # ПАЧКА 1: Создаем пак с первыми 50 стикерами
+        # ПАЧКА 1: Создаем пак с первыми 10 стикерами
         first_batch = all_stickers[:batch_size]
         first_batch_stickers = []
         
@@ -96,64 +47,44 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text(f"✅ Создан пак с первыми 50 стикерами\nДобавляю остальные...")
+        await msg.edit_text(f"✅ Создан пак\nДобавляю остальные стикеры... {batch_size}/{total_stickers}")
 
-        # ПАЧКА 2: Стикеры 51-100 (если есть)
-        if total_stickers > batch_size:
-            second_batch = all_stickers[batch_size:batch_size * 2]
-            second_batch_stickers = []
+        # Добавляем остальные стикеры пачками с задержками
+        for i in range(batch_size, total_stickers, batch_size):
+            batch = all_stickers[i:i + batch_size]
             
-            for sticker in second_batch:
+            for sticker in batch:
                 emoji = sticker.emoji or "👍"
-                second_batch_stickers.append(
-                    InputSticker(
-                        sticker=sticker.file_id,
-                        emoji_list=[emoji],
-                        format=sticker_format
-                    )
+                sticker_obj = InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=[emoji],
+                    format=sticker_format
                 )
-            
-            # Добавляем вторую пачку
-            for sticker_obj in second_batch_stickers:
+                
                 await bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_name,
                     sticker=sticker_obj
                 )
+                
+                # ЗАДЕРЖКА МЕЖДУ КАЖДЫМ СТИКЕРОМ
+                await asyncio.sleep(0.5)
             
-            current_count = min(batch_size * 2, total_stickers)
-            await msg.edit_text(f"✅ Добавлено {current_count}/120 стикеров\nПродолжаю...")
+            current_progress = min(i + batch_size, total_stickers)
+            await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}")
+            
+            # ЗАДЕРЖКА МЕЖДУ ПАЧКАМИ
+            await asyncio.sleep(2)
 
-        # ПАЧКА 3: Стикеры 101-120 (если есть)
-        if total_stickers > batch_size * 2:
-            third_batch = all_stickers[batch_size * 2:]
-            third_batch_stickers = []
-            
-            for sticker in third_batch:
-                emoji = sticker.emoji or "👍"
-                third_batch_stickers.append(
-                    InputSticker(
-                        sticker=sticker.file_id,
-                        emoji_list=[emoji],
-                        format=sticker_format
-                    )
-                )
-            
-            # Добавляем третью пачку
-            for sticker_obj in third_batch_stickers:
-                await bot.add_sticker_to_set(
-                    user_id=user_id,
-                    name=new_name,
-                    sticker=sticker_obj
-                )
-
-        await msg.edit_text(f"✅ t.me/addstickers/{new_name}\nСтикеров: {total_stickers}/120")
+        await msg.edit_text(f"✅ t.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
             await msg.edit_text("❌ Имя занято")
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
+        elif "Flood control" in str(e) or "Too Many Requests" in str(e):
+            await msg.edit_text("❌ Слишком много запросов. Подожди 10 секунд и попробуй снова.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
@@ -161,30 +92,3 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await msg.edit_text(f"❌ Ошибка: {e}")
 
     await state.clear()
-
-@dp.message()
-async def handle_other_messages(message: Message):
-    await message.answer("Отправь стикер или ссылку")
-
-# Flask для Render
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-async def run_bot():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-def main():
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    asyncio.run(run_bot())
-
-if __name__ == "__main__":
-    main()
