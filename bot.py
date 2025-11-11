@@ -71,9 +71,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
 
         all_stickers = original_set.stickers
         
-        # ПАЧКА 1: создаем пак с 20 стикерами (безопасное количество)
-        await msg.edit_text("🔄 Создаю пак с первыми 20 стикерами...")
-        first_batch = all_stickers[:20]
+        # ПАЧКА 1: создаем пак с 50 стикерами
+        await msg.edit_text("🔄 Создаю пак с первыми 50 стикерами...")
+        first_batch = all_stickers[:50]
         first_batch_stickers = []
         
         for sticker in first_batch:
@@ -94,16 +94,15 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Пак создан\n⏱️ Ожидаю 8 секунд...")
-        await asyncio.sleep(8)  # Задержка после создания пака
-        
-        # Оптимальные пачки с балансом скорости и безопасности
+        await msg.edit_text("✅ Пак создан\n⏱️ Ожидаю 10 секунд...")
+        await asyncio.sleep(10)
+
+        # ЧЕТКИЕ ПАЧКИ ПО ПЛАНУ:
         batches = [
-            (21, 40, 6),   # 20 стикеров, задержка 6 сек
-            (41, 60, 8),   # 20 стикеров, задержка 8 сек
-            (61, 80, 6),   # 20 стикеров, задержка 6 сек
-            (81, 100, 8),  # 20 стикеров, задержка 8 сек
-            (101, 120, 6)  # 20 стикеров, задержка 6 сек
+            (51, 70, 15),   # 51-70, задержка 15 сек
+            (71, 90, 10),   # 71-90, задержка 10 сек
+            (91, 100, 15),  # 91-100, задержка 15 сек
+            (101, 120, 10)  # 101-120, задержка 10 сек
         ]
 
         for start, end, delay in batches:
@@ -130,7 +129,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             
             current_end = min(end, total_stickers)
             
-            # Задержка между пачками
+            # ЗАДЕРЖКА по плану
             if current_end < total_stickers:
                 await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю {delay} секунд...")
                 await asyncio.sleep(delay)
@@ -143,7 +142,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Флуд-контроль! Попробуй через 1 минуту.")
+            await msg.edit_text("❌ Флуд-контроль! Попробуй через 2 минуты.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
