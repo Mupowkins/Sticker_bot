@@ -1,10 +1,11 @@
 import logging
 import os
+import asyncio
 from telegram import (
     Update, 
     InputSticker, 
     BotCommand,
-    StickerSet  # Добавляем импорт StickerSet
+    StickerSet
 )
 from telegram.ext import (
     Application, 
@@ -144,33 +145,6 @@ async def get_new_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     )
     return GET_NEW_SHORT_NAME
 
-async def create_sticker_set_copy(context, user_id, new_title, new_short_name, original_sticker_set):
-    """Создание копии стикерпака"""
-    try:
-        # Определяем тип стикерпака
-        sticker_type = "regular"
-        if hasattr(original_sticker_set, 'is_animated') and original_sticker_set.is_animated:
-            sticker_type = "animated"
-        elif hasattr(original_sticker_set, 'is_video') and original_sticker_set.is_video:
-            sticker_type = "video"
-        
-        # Создаем новый стикерпак
-        await context.bot.create_new_sticker_set(
-            user_id=user_id,
-            name=new_short_name,
-            title=new_title,
-            stickers=[],  # Пока пустой, нужно добавить логику копирования стикеров
-            sticker_format=sticker_type
-        )
-        
-        # Здесь должна быть логика копирования каждого стикера
-        # Это сложная часть, требующая загрузки и перезаливки каждого файла
-        
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка создания стикерпака: {e}")
-        return False
-
 async def get_new_short_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Создание копии"""
     try:
@@ -230,7 +204,7 @@ async def handle_other_messages(update: Update, context: ContextTypes.DEFAULT_TY
         "📖 Помощь: /help"
     )
 
-def main():
+async def main():
     """Запуск бота"""
     try:
         if not TOKEN:
@@ -267,11 +241,34 @@ def main():
         application.add_handler(conv_handler)
         application.add_handler(MessageHandler(filters.ALL, handle_other_messages))
         
-        logger.info("✅ Бот запущен!")
-        application.run_polling()
+        # 🔧 РЕШЕНИЕ ДЛЯ RENDER:
+        # Используем вебхуки вместо polling
+        if os.getenv('RENDER'):
+            logger.info("🌐 Запуск в режиме Webhook (Render)")
+            port = int(os.environ.get('PORT', 8443))
+            # Замени 'your-service-name' на реальное имя твоего сервиса на Render
+            webhook_url = f"https://your-service-name.onrender.com/{TOKEN}"
+            
+            # Очищаем предыдущие вебхуки
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            
+            await application.run_webhook(
+                listen="0.0.0.0",
+                port=port,
+                webhook_url=webhook_url,
+                secret_token=TOKEN
+            )
+        else:
+            logger.info("💻 Запуск в режиме Polling (локально)")
+            # Очищаем предыдущие обновления
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            await application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True
+            )
         
     except Exception as e:
         logger.error(f"❌ Ошибка запуска: {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
