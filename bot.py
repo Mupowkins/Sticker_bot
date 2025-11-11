@@ -1,6 +1,5 @@
 import logging
 import os
-import asyncio
 from telegram import (
     Update, 
     InputSticker, 
@@ -204,7 +203,7 @@ async def handle_other_messages(update: Update, context: ContextTypes.DEFAULT_TY
         "📖 Помощь: /help"
     )
 
-async def main():
+def main():
     """Запуск бота"""
     try:
         if not TOKEN:
@@ -241,38 +240,15 @@ async def main():
         application.add_handler(conv_handler)
         application.add_handler(MessageHandler(filters.ALL, handle_other_messages))
         
-        # 🔧 АВТОМАТИЧЕСКАЯ НАСТРОЙКА ДЛЯ RENDER
-        if os.getenv('RENDER'):
-            logger.info("🌐 Запуск в режиме Webhook (Render)")
-            port = int(os.environ.get('PORT', 8443))
-            
-            # Очищаем предыдущие вебхуки
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            
-            # ИНИЦИАЛИЗИРУЕМ приложение перед запуском
-            await application.initialize()
-            
-            # Запускаем вебхук без указания URL
-            await application.run_webhook(
-                listen="0.0.0.0",
-                port=port,
-                secret_token=TOKEN
-            )
-        else:
-            logger.info("💻 Запуск в режиме Polling (локально)")
-            # Очищаем предыдущие обновления
-            await application.bot.delete_webhook(drop_pending_updates=True)
-            
-            # ИНИЦИАЛИЗИРУЕМ приложение перед запуском
-            await application.initialize()
-            
-            await application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
+        # 🔧 ПРОСТОЙ ЗАПУСК - только polling
+        logger.info("💻 Запуск в режиме Polling")
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True
+        )
         
     except Exception as e:
         logger.error(f"❌ Ошибка запуска: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
