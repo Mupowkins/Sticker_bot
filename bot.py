@@ -3,6 +3,7 @@ import logging
 import re
 import os  
 import threading 
+import random
 from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -69,47 +70,71 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # Создаем пак с 1 стикером
-        first_sticker = original_set.stickers[0]
-        emoji = first_sticker.emoji or "👍"
+        all_stickers = original_set.stickers
         
-        first_sticker_obj = InputSticker(
-            sticker=first_sticker.file_id,
-            emoji_list=[emoji],
-            format=sticker_format
-        )
+        # ПАЧКА 1: создаем пак сразу с 50 стикерами
+        first_batch = all_stickers[:50]
+        first_batch_stickers = []
+        
+        for sticker in first_batch:
+            emoji = sticker.emoji or "👍"
+            first_batch_stickers.append(
+                InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=[emoji],
+                    format=sticker_format
+                )
+            )
 
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
             title="ТГ Канал - @mupowkins",
-            stickers=[first_sticker_obj],
+            stickers=first_batch_stickers,
             sticker_format=sticker_format
         )
 
-        await msg.edit_text(f"✅ Создан пак\nДобавляю стикеры... 1/{total_stickers}")
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидаю 15-20 секунд...")
+        
+        # СЛУЧАЙНАЯ ЗАДЕРЖКА 15-20 секунд
+        first_delay = random.uniform(15.0, 20.0)
+        await asyncio.sleep(first_delay)
 
-        # По 1 стикеру с задержкой 1.2 секунды
-        for i, sticker in enumerate(original_set.stickers[1:], 2):
-            emoji = sticker.emoji or "👍"
+        # Остальные пачки по 10 стикеров со случайными задержками 15-20 секунд
+        batch_size = 10
+        batches = [
+            (51, 60), (61, 70), (71, 80), (81, 90), 
+            (91, 100), (101, 110), (111, 120)
+        ]
+
+        for start, end in batches:
+            if start > total_stickers:
+                break
+                
+            batch = all_stickers[start-1:end]
             
-            sticker_obj = InputSticker(
-                sticker=sticker.file_id,
-                emoji_list=[emoji],
-                format=sticker_format
-            )
+            # Добавляем пачку из 10 стикеров БЕЗ задержек внутри пачки
+            for sticker in batch:
+                emoji = sticker.emoji or "👍"
+                sticker_obj = InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=[emoji],
+                    format=sticker_format
+                )
+                
+                await bot.add_sticker_to_set(
+                    user_id=user_id,
+                    name=new_name,
+                    sticker=sticker_obj
+                )
             
-            # ЗАДЕРЖКА 1.2 СЕКУНДЫ
-            await asyncio.sleep(1.2)
+            current_end = min(end, total_stickers)
+            await msg.edit_text(f"✅ Добавлено {current_end}/120 стикеров\nОжидаю 15-20 секунд...")
             
-            await bot.add_sticker_to_set(
-                user_id=user_id,
-                name=new_name,
-                sticker=sticker_obj
-            )
-            
-            if i % 10 == 0:
-                await msg.edit_text(f"✅ Добавлено {i}/{total_stickers}")
+            # СЛУЧАЙНАЯ ЗАДЕРЖКА 15-20 секунд между пачками
+            if current_end < total_stickers:
+                delay = random.uniform(15.0, 20.0)
+                await asyncio.sleep(delay)
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
@@ -119,7 +144,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Слишком быстро! Подожди 30 секунд.")
+            await msg.edit_text("❌ Флуд-контроль! Попробуй через 2 минуты.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
