@@ -9,7 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
@@ -62,60 +62,33 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     try:
         original_set = await bot.get_sticker_set(original_set_name)
 
-        # Создаем пак с первым стикером
-        first_sticker = original_set.stickers[0]
-        emoji = first_sticker.emoji or "👍"
-        
-        if original_set.is_video:
-            await bot.create_new_sticker_set(
-                user_id=user_id,
-                name=new_name,
-                title="ТГ Канал - @mupowkins",
-                webm_sticker=first_sticker.file_id,
-                emojis=emoji
-            )
-        elif original_set.is_animated:
-            await bot.create_new_sticker_set(
-                user_id=user_id,
-                name=new_name,
-                title="ТГ Канал - @mupowkins", 
-                tgs_sticker=first_sticker.file_id,
-                emojis=emoji
-            )
-        else:
-            await bot.create_new_sticker_set(
-                user_id=user_id,
-                name=new_name,
-                title="ТГ Канал - @mupowkins",
-                png_sticker=first_sticker.file_id,
-                emojis=emoji
-            )
-        
-        # Добавляем остальные стикеры
-        for i, sticker in enumerate(original_set.stickers[1:], 1):
+        # Определяем формат
+        sticker_format = "static"
+        if original_set.is_animated:
+            sticker_format = "animated"
+        elif original_set.is_video:
+            sticker_format = "video"
+
+        # Создаем список стикеров
+        stickers_list = []
+        for sticker in original_set.stickers:
             emoji = sticker.emoji or "👍"
-            
-            if original_set.is_video:
-                await bot.add_sticker_to_set(
-                    user_id=user_id,
-                    name=new_name,
-                    webm_sticker=sticker.file_id,
-                    emojis=emoji
+            stickers_list.append(
+                InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=[emoji],
+                    format=sticker_format
                 )
-            elif original_set.is_animated:
-                await bot.add_sticker_to_set(
-                    user_id=user_id,
-                    name=new_name,
-                    tgs_sticker=sticker.file_id,
-                    emojis=emoji
-                )
-            else:
-                await bot.add_sticker_to_set(
-                    user_id=user_id,
-                    name=new_name,
-                    png_sticker=sticker.file_id,
-                    emojis=emoji
-                )
+            )
+
+        # Создаем новый стикерпак
+        await bot.create_new_sticker_set(
+            user_id=user_id,
+            name=new_name,
+            title="ТГ Канал - @mupowkins",
+            stickers=stickers_list,
+            sticker_format=sticker_format
+        )
 
         await msg.edit_text(f"✅ t.me/addstickers/{new_name}")
 
