@@ -21,32 +21,6 @@ dp = Dispatcher()
 class CopyPack(StatesGroup):
     waiting_for_new_name = State()
 
-@dp.message(CommandStart())
-async def cmd_start(message: Message):
-    await message.answer("Отправь стикер или ссылку на стикерпак")
-
-@dp.message(F.sticker)
-async def handle_sticker(message: Message, state: FSMContext):
-    if not message.sticker.set_name:
-        await message.answer("Этот стикер не из пака")
-        return
-    
-    await state.update_data(original_set_name=message.sticker.set_name)
-    await state.set_state(CopyPack.waiting_for_new_name)
-    
-    me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
-
-@dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
-async def handle_link(message: Message, state: FSMContext):
-    original_set_name = re.search(r"t\.me/addstickers/([a-zA-Z0-9_]+)", message.text).group(1)
-    
-    await state.update_data(original_set_name=original_set_name)
-    await state.set_state(CopyPack.waiting_for_new_name)
-    
-    me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
-
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
@@ -63,76 +37,81 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         original_set = await bot.get_sticker_set(original_set_name)
         total_stickers = len(original_set.stickers)
 
-        sticker_format = "static"
-        if original_set.is_animated:
-            sticker_format = "animated"
-        elif original_set.is_video:
-            sticker_format = "video"
+        # Определяем тип стикеров для старого API
+        if original_set.is_video:
+            sticker_type = "video"
+        elif original_set.is_animated:
+            sticker_type = "animated"
+        else:
+            sticker_type = "regular"
 
         all_stickers = original_set.stickers
         
-        # ПАЧКА 1: создаем пак с 50 стикерами
-        await msg.edit_text("🔄 Создаю пак с первыми 50 стикерами...")
-        first_batch = all_stickers[:50]
-        first_batch_stickers = []
-        
-        for sticker in first_batch:
-            emoji = sticker.emoji or "👍"
-            first_batch_stickers.append(
-                InputSticker(
-                    sticker=sticker.file_id,
-                    emoji_list=[emoji],
-                    format=sticker_format
-                )
+        # ПАЧКА 1: создаем пак с 1 стикером (старый метод)
+        await msg.edit_text("🔄 Создаю пак...")
+        first_sticker = all_stickers[0]
+        emoji = first_sticker.emoji or "👍"
+
+        # Используем старый метод создания
+        if sticker_type == "video":
+            await bot.create_new_sticker_set(
+                user_id=user_id,
+                name=new_name,
+                title="ТГ Канал - @mupowkins",
+                webm_sticker=first_sticker.file_id,
+                emojis=emoji
+            )
+        elif sticker_type == "animated":
+            await bot.create_new_sticker_set(
+                user_id=user_id,
+                name=new_name,
+                title="ТГ Канал - @mupowkins", 
+                tgs_sticker=first_sticker.file_id,
+                emojis=emoji
+            )
+        else:
+            await bot.create_new_sticker_set(
+                user_id=user_id,
+                name=new_name,
+                title="ТГ Канал - @mupowkins",
+                png_sticker=first_sticker.file_id,
+                emojis=emoji
             )
 
-        await bot.create_new_sticker_set(
-            user_id=user_id,
-            name=new_name,
-            title="ТГ Канал - @mupowkins",
-            stickers=first_batch_stickers,
-            sticker_format=sticker_format
-        )
-
-        await msg.edit_text("✅ Пак создан\n⏱️ Ожидаю 20 секунд...")
-        await asyncio.sleep(20)
-
-        # ЧЕТКИЕ ПАЧКИ ПО ПЛАНУ:
-        batches = [
-            (51, 70, 15),   # 51-70, задержка 15 сек
-            (71, 90, 15),   # 71-90, задержка 15 сек
-            (91, 100, 15),  # 91-100, задержка 15 сек
-            (101, 120, 15)  # 101-120, задержка 15 сек
-        ]
-
-        for start, end, delay in batches:
-            if start > total_stickers:
-                break
-                
-            # Добавляем пачку стикеров
-            batch = all_stickers[start-1:end]
-            await msg.edit_text(f"🔄 Добавляю стикеры {start}-{end}...")
+        await msg.edit_text("✅ Пак создан\nДобавляю стикеры... 1/120")
+        
+        # Добавляем остальные стикеры по одному с задержкой 1 секунда
+        for i, sticker in enumerate(all_stickers[1:], 2):
+            emoji = sticker.emoji or "👍"
             
-            for sticker in batch:
-                emoji = sticker.emoji or "👍"
-                sticker_obj = InputSticker(
-                    sticker=sticker.file_id,
-                    emoji_list=[emoji],
-                    format=sticker_format
-                )
-                
+            # Используем старый метод добавления
+            if sticker_type == "video":
                 await bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_name,
-                    sticker=sticker_obj
+                    webm_sticker=sticker.file_id,
+                    emojis=emoji
+                )
+            elif sticker_type == "animated":
+                await bot.add_sticker_to_set(
+                    user_id=user_id,
+                    name=new_name,
+                    tgs_sticker=sticker.file_id,
+                    emojis=emoji
+                )
+            else:
+                await bot.add_sticker_to_set(
+                    user_id=user_id,
+                    name=new_name,
+                    png_sticker=sticker.file_id,
+                    emojis=emoji
                 )
             
-            current_end = min(end, total_stickers)
+            # Маленькая задержка 1 секунда
+            await asyncio.sleep(1)
             
-            # ЗАДЕРЖКА по плану
-            if current_end < total_stickers:
-                await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю {delay} секунд...")
-                await asyncio.sleep(delay)
+            if i % 10 == 0:
+                await msg.edit_text(f"✅ Добавлено {i}/120")
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
@@ -142,7 +121,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Флуд-контроль! Попробуй через 3 минуты.")
+            await msg.edit_text("❌ Слишком быстро! Попробуй через 30 секунд.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
@@ -150,29 +129,3 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await msg.edit_text(f"❌ Ошибка: {e}")
 
     await state.clear()
-
-@dp.message()
-async def handle_other_messages(message: Message):
-    await message.answer("Отправь стикер или ссылку")
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-async def run_bot():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-def main():
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    asyncio.run(run_bot())
-
-if __name__ == "__main__":
-    main()
