@@ -11,14 +11,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
+# Импорт для исправления aiogram 3.7+
 from aiogram.client.bot import DefaultBotProperties 
 
 # --- Конфигурация ---
 
 # !!! KАК ТЫ ПОПРОСИЛ: 
 # Токен вставлен напрямую в код.
-# Код больше НЕ будет искать токен в настройках Render.com.
-BOT_TOKEN = "8094703198:AAEszw3K_62yU3oHR0cW3RHvXfxBeUJhy6A"
+BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 # Эта строка (правильная для Render) теперь НЕ используется:
 # BOT_TOKEN = os.environ.get("BOT_TOKEN") 
