@@ -9,7 +9,8 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, InputSticker
+# (!!!) ИЗМЕНЕНИЕ: Нам больше не нужен InputSticker
+from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.bot import DefaultBotProperties 
 
@@ -36,6 +37,8 @@ class CopyPack(StatesGroup):
 
 
 # --- Обработчики (Хэндлеры) ---
+# (cmd_start, handle_sticker, handle_link, get_new_title
+# не изменились, они включены в код, листай ниже)
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
@@ -128,33 +131,22 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     original_set_name = user_data.get("original_set_name")
     new_title = user_data.get("new_title")
-    new_name = message.text.strip() # .strip() убирает случайные пробелы в начале/конце
+    new_name = message.text.strip()
     user_id = message.from_user.id
 
-    # --- (!!!) ИЗМЕНЕНИЕ №1: АВТО-ДОБАВЛЕНИЕ СУФФИКСА (!!!) ---
-    
-    # Получаем юзернейм бота для суффикса
+    # --- Авто-добавление суффикса ---
     me = await bot.get_me()
-    bot_suffix = f"_by_{me.username}" # me.username будет 'MupowkinsBOT'
+    bot_suffix = f"_by_{me.username}" 
     
-    # 1. Проверяем, если суффикс уже есть и он ПРАВИЛЬНЫЙ
     if new_name.endswith(bot_suffix):
-        pass # Имя уже идеальное
-    
-    # 2. Проверяем, если пользователь ввел суффикс в НИЖНЕМ РЕГИСТРЕ
+        pass 
     elif new_name.lower().endswith(bot_suffix.lower()):
-        # Отсекаем неправильный суффикс (той же длины, что и правильный)
         new_name = new_name[:-len(bot_suffix)]
-        # Добавляем правильный суффикс
         new_name = new_name + bot_suffix
         await message.answer(f"Я заметил ошибку в регистре суффикса. Исправляю имя на: <b>{new_name}</b>")
-    
-    # 3. Если суффикса нет вообще
     else:
         new_name = new_name + bot_suffix
         await message.answer(f"Ты забыл суффикс. Автоматически добавляю его. Новое имя: <b>{new_name}</b>")
-    
-    # Старая проверка больше не нужна
     
     msg = await message.answer(f"Принято. Начинаю процесс копирования для <b>{new_name}</b>... Это может занять несколько минут.")
 
@@ -169,50 +161,55 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
         
-        # 3. Собираем "список" стикеров для загрузки
+        # --- (!!!) ИЗМЕНЕНИЕ №1: МЫ СОБИРАЕМ СЛОВАРИ (DICT), А НЕ InputSticker (!!!) ---
         stickers_to_add = []
         for sticker in original_set.stickers:
             
-            # --- (!!!) ИЗМЕНЕНИЕ №2: СМАЙЛИК "🤩" (!!!) ---
+            # Проверяем эмодзи
             current_emoji = sticker.emoji
             if not current_emoji:
                 current_emoji = "🤩" # Эмодзи по умолчанию
-                
-            stickers_to_add.append(
-                InputSticker(
-                    sticker=sticker.file_id, 
-                    emoji_list=[current_emoji] # Используем проверенную переменную
-                )
-            )
+            
+            # Проверяем file_id (на всякий случай)
+            if not sticker.file_id:
+                logging.warning(f"Стикер {sticker.file_unique_id} не имеет file_id, пропускаю.")
+                continue # Пропускаем этот стикер
+            
+            # Создаем простой словарь (dict)
+            sticker_dict = {
+                "sticker": sticker.file_id,
+                "emoji_list": [current_emoji]
+            }
+            stickers_to_add.append(sticker_dict)
 
         if not stickers_to_add:
             await msg.edit_text("Не могу поверить, но в этом паке нет стикеров. Копирование отменено.")
             await state.clear()
             return
 
+        # --- (!!!) ИЗМЕНЕНИЕ №2: ПЕРЕДАЕМ СЛОВАРИ (DICT) (!!!) ---
+        
         # 4. Создаем НОВЫЙ пак
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
             title=new_title,
-            stickers=[stickers_to_add[0]],
+            stickers=[stickers_to_add[0]], # Передаем первый словарь
             sticker_format=sticker_format
         )
         
         # 5. Добавляем ОСТАЛЬНЫЕ стикеры
         if len(stickers_to_add) > 1:
-            # stickers_to_add[1:] - это срез со второго стикера до последнего
-            # 'sticker' - это переменная цикла, которая хранит InputSticker
-            for i, sticker in enumerate(stickers_to_add[1:], start=1):
+            for i, sticker_dict in enumerate(stickers_to_add[1:], start=1):
                 await bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_name,
-                    sticker=sticker # ИСПРАВЛЕНО: передаем сам 'sticker' из цикла
+                    sticker=sticker_dict # Передаем словарь
                 )
+                
                 # Показываем прогресс
-                # (i+1) т.к. i начинается с 1 (второй стикер), а 0-й уже добавлен
                 total_stickers = len(stickers_to_add)
-                if i % 10 == 0 or (i+1) == total_stickers: # Каждые 10 стикеров или в конце
+                if i % 10 == 0 or (i+1) == total_stickers: 
                     await msg.edit_text(f"Копирую... {i+1}/{total_stickers}")
                 
                 await asyncio.sleep(0.1) # Задержка от спам-лимитов
@@ -226,7 +223,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
             await msg.edit_text(f"❌ Ошибка. Имя (ссылка) `{new_name}` уже занято. Попробуй другое.")
-            return # Не сбрасываем состояние, даем попробовать еще раз
+            return 
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Ошибка. Оригинальный стикерпак не найден. Возможно, ссылка битая.")
         elif "USER_ID_INVALID" in str(e):
@@ -264,7 +261,6 @@ def i_am_alive():
 
 def run_flask():
     """Запускает веб-сервер в отдельном потоке"""
-    # Render сам передаст нужный порт в переменную окружения PORT
     port = int(os.environ.get("PORT", 8080)) 
     app.run(host='0.0.0.0', port=port)
 
@@ -279,10 +275,8 @@ async def main():
 
 if __name__ == "__main__":
     logging.info("Запуск Flask-потока...")
-    # 1. Запускаем веб-сервер в отдельном потоке
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-    # 2. Запускаем нашего бота
     logging.info("Запуск основного asyncio-бота...")
     asyncio.run(main())
