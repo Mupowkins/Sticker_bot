@@ -2,8 +2,8 @@ import asyncio
 import logging
 import re
 import os  
-import threading # <-- ДОБАВЛЕНО: для "обмана" Render
-from flask import Flask # <-- ДОБАВЛЕНО: для "обмана" Render
+import threading 
+from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
@@ -13,13 +13,24 @@ from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 
 # --- Конфигурация ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN") 
+
+# !!! ВНИМАНИЕ: ТЫ ПОПРОСИЛ ВСТАВИТЬ ТОКЕН НАПРЯМУЮ !!!
+# ЭТОТ КОД НЕ БУДЕТ ИСКАТЬ ТВОЙ НОВЫЙ ТОКЕН В НАСТРОЙКАХ RENDER.COM
+# ОН ВСЕГДА БУДЕТ ИСПОЛЬЗОВАТЬ ТОЛЬКО ЭТОТ СТАРЫЙ НЕРАБОЧИЙ ТОКЕН.
+BOT_TOKEN = "8094703198:AAEszw3K_62yU3oHR0cW3RHvXfxBeUJhy6A"
+
+# Эта строка (правильная для Render) теперь НЕ используется:
+# BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 
 if not BOT_TOKEN:
-    logging.critical("Критическая ошибка: Токен BOT_TOKEN не найден в переменных окружения.")
+    # Эта проверка теперь почти бесполезна, но мы ее оставим
+    logging.critical("Критическая ошибка: Токен не найден.")
     exit()
 
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
+
+# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
@@ -31,8 +42,6 @@ class CopyPack(StatesGroup):
 
 
 # --- Обработчики (Хэндлеры) ---
-# (Тут все твои хэндлеры: cmd_start, handle_sticker, handle_link и т.д.)
-# (Я их не менял, просто пролистай ниже)
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
@@ -172,6 +181,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         )
 
     except TelegramBadRequest as e:
+        #... (вся обработка ошибок)...
         if "sticker set name is already taken" in str(e):
             await msg.edit_text(f"❌ Ошибка. Имя (ссылка) `{new_name}` уже занято. Попробуй другое.")
             return 
@@ -196,39 +206,27 @@ async def handle_other_messages(message: Message):
     await message.answer("Я не понимаю. Пожалуйста, отправь мне стикер или ссылку на стикерпак.")
 
 
-# --- (!!!) НОВЫЙ БЛОК ДЛЯ RENDER (!!!) ---
-
-# Создаем "пустышку" Flask
+# --- (!!!) БЛОК ДЛЯ RENDER (!!!) ---
 app = Flask(__name__)
 
 @app.route('/')
 def i_am_alive():
-    """Render будет стучаться сюда, чтобы проверить, 'жив' ли сервис"""
     return "Bot is alive!"
 
 def run_flask():
-    """Запускает веб-сервер в отдельном потоке"""
-    # Render сам передаст нужный порт в переменную окружения PORT
     port = int(os.environ.get("PORT", 8080)) 
     app.run(host='0.0.0.0', port=port)
 
 # --- Запуск Бота ---
-
 async def main():
-    """
-    Главная функция для запуска бота.
-    """
     logging.info("Бот запускается (через main)...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     logging.info("Запуск Flask-потока...")
-    # 1. Запускаем веб-сервер в отдельном потоке
-    # Он будет отвечать Render, что все хорошо
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-    # 2. Запускаем нашего бота
     logging.info("Запуск основного asyncio-бота...")
     asyncio.run(main())
