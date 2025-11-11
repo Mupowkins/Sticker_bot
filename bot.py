@@ -94,15 +94,15 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Пак создан\n⏱️ Ожидаю 10 секунд...")
-        await asyncio.sleep(10)
+        await msg.edit_text("✅ Пак создан\n⏱️ Ожидаю 20 секунд...")
+        await asyncio.sleep(20)
 
         # ЧЕТКИЕ ПАЧКИ ПО ПЛАНУ:
         batches = [
             (51, 70, 15),   # 51-70, задержка 15 сек
-            (71, 90, 10),   # 71-90, задержка 10 сек
+            (71, 90, 15),   # 71-90, задержка 15 сек
             (91, 100, 15),  # 91-100, задержка 15 сек
-            (101, 120, 10)  # 101-120, задержка 10 сек
+            (101, 120, 15)  # 101-120, задержка 15 сек
         ]
 
         for start, end, delay in batches:
@@ -142,7 +142,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Флуд-контроль! Попробуй через 2 минуты.")
+            await msg.edit_text("❌ Флуд-контроль! Попробуй через 3 минуты.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
