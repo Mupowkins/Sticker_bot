@@ -150,11 +150,12 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 logging.warning(f"Стикер {sticker.file_unique_id} не имеет file_id, пропускаю.")
                 continue
             
-            # (!!!) ИЗМЕНЕНИЕ: ВСЕ стикеры получают '🤩' (!!!)
+            # (!!!) ИСПРАВЛЕНИЕ: Добавляем обязательный параметр format (!!!)
             stickers_to_add.append(
                 InputSticker(
                     sticker=sticker.file_id,
-                    emoji_list=["🤩"] # Используем только этот эмодзи
+                    emoji_list=["🤩"], # Используем только этот эмодзи
+                    format=sticker_format  # ← ЭТО ИСПРАВЛЕНИЕ!
                 )
             )
 
