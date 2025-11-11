@@ -9,17 +9,14 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-# (!!!) ВЕРНУЛИ InputSticker - ОШИБКИ 'dict' БОЛЬШЕ НЕТ (!!!)
+# Мы используем InputSticker (это исправляет ошибку валидации)
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.bot import DefaultBotProperties 
-# (Мы УБРАЛИ RedisStorage)
 
 # --- Конфигурация ---
 # Токен вставлен напрямую, как ты просил
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
-
-# (Мы УБРАЛИ проверку REDIS_URL)
 
 if not BOT_TOKEN:
     logging.critical("Критическая ошибка: Токен BOT_TOKEN не найден.")
@@ -31,13 +28,13 @@ logging.basicConfig(level=logging.INFO)
 # Используем DefaultBotProperties для указания parse_mode
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
-# Dispatcher снова без 'storage'
+# Dispatcher без Redis (помни про "амнезию")
 dp = Dispatcher()
 
 
-# --- Машина состояний (FSM) ---
+# --- (!!!) ИЗМЕНЕНИЕ: FSM СТАЛА ПРОЩЕ (!!!) ---
 class CopyPack(StatesGroup):
-    waiting_for_new_title = State()
+    # Нам нужно ждать ТОЛЬКО ссылку
     waiting_for_new_name = State()
 
 
@@ -49,65 +46,60 @@ async def cmd_start(message: Message):
         "Привет! 👋 Я бот для копирования стикерпаков.\n\n"
         "Отправь мне **любой стикер** из пака, который хочешь скопировать, "
         "или **ссылку** на пак (вида `t.me/addstickers/название`).\n\n"
-        "Я создам для тебя полную копию этого пака, владельцем которой будешь ты."
+        "Я попрошу у тебя новую ссылку, а название установлю автоматически."
     )
 
-@dp.message(F.sticker)
-async def handle_sticker(message: Message, state: FSMContext):
-    if not message.sticker.set_name:
-        await message.answer("У этого стикера нет 'set_name'. Кажется, это не часть пака, а кастомный стикер. Я не могу его скопировать.")
-        return
-    await state.update_data(original_set_name=message.sticker.set_name)
-    await state.set_state(CopyPack.waiting_for_new_title)
-    try:
-        pack = await bot.get_sticker_set(message.sticker.set_name)
-        pack_title = pack.title
-    except Exception:
-        pack_title = message.sticker.set_name
-    await message.answer(
-        f"Отлично, я вижу пак: <b>{pack_title}</b>\n\n"
-        "Теперь придумай <b>новое название (Title)</b> для твоего будущего пака. Это то, что будет отображаться в списке стикеров."
-    )
-
-@dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
-async def handle_link(message: Message, state: FSMContext):
-    original_set_name = re.search(r"t\.me/addstickers/([a-zA-Z0-9_]+)", message.text).group(1)
-    if not original_set_name:
-        await message.answer("Не смог распознать ссылку. Убедись, что она верная.")
-        return
+async def ask_for_new_name(message: Message, state: FSMContext, original_set_name: str):
+    """
+    Общая функция, которая задает вопрос про новую ссылку.
+    Вызывается из handle_sticker и handle_link.
+    """
     await state.update_data(original_set_name=original_set_name)
-    await state.set_state(CopyPack.waiting_for_new_title)
-    try:
-        pack = await bot.get_sticker_set(original_set_name)
-        pack_title = pack.title
-    except Exception:
-        pack_title = original_set_name
-    await message.answer(
-        f"Отлично, я вижу пак: <b>{pack_title}</b>\n\n"
-        "Теперь придумай <b>новое название (Title)</b> для твоего будущего пака. Это то, что будет отображаться в списке стикеров."
-    )
-
-
-@dp.message(CopyPack.waiting_for_new_title)
-async def get_new_title(message: Message, state: FSMContext):
+    await state.set_state(CopyPack.waiting_for_new_name)
+    
+    # Получаем юзернейм бота
     me = await bot.get_me()
     bot_username = me.username
-    await state.update_data(new_title=message.text)
-    await state.set_state(CopyPack.waiting_for_new_name)
+    
     await message.answer(
-        f"Название принято: <b>{message.text}</b>\n\n"
+        f"Отлично, пак найден. Название будет `ТГ Канал - @mupowkins`.\n\n"
         "Теперь придумай <b>новую ссылку (Short Name)</b>. Это уникальное имя пака.\n\n"
         "<b>Требования:</b>\n"
         "• Только латинские буквы (a-z), цифры (0-9) и '_'.\n"
         "• Должно быть уникальным (не занятым).\n"
-        f"• Имя **должно** заканчиваться на `_by_{bot_username}` (юзернейм этого бота).\n\n"
-        f"<b>Подсказка:</b> Можешь просто отправить имя пака (например, `Moi_Stikeri`), "
-        f"и я **сам добавлю** `_by_{bot_username}` в конец."
+        f"• Имя **должно** заканчиваться на `_by_{bot_username}`.\n\n"
+        f"<b>Подсказка:</b> Можешь просто отправить имя, и я **сам добавлю** `_by_{bot_username}` в конец."
     )
+
+@dp.message(F.sticker)
+async def handle_sticker(message: Message, state: FSMContext):
+    """
+    Ловит любой отправленный стикер.
+    """
+    if not message.sticker.set_name:
+        await message.answer("У этого стикера нет 'set_name'. Кажется, это не часть пака, а кастомный стикер. Я не могу его скопировать.")
+        return
+    # Сразу вызываем функцию, которая задаст вопрос
+    await ask_for_new_name(message, state, message.sticker.set_name)
+
+@dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
+async def handle_link(message: Message, state: FSMContext):
+    """
+    Ловит ссылку на стикерпак.
+    """
+    original_set_name = re.search(r"t\.me/addstickers/([a-zA-Z0-9_]+)", message.text).group(1)
+    if not original_set_name:
+        await message.answer("Не смог распознать ссылку. Убедись, что она верная.")
+        return
+    # Сразу вызываем функцию, которая задаст вопрос
+    await ask_for_new_name(message, state, original_set_name)
 
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
+    """
+    Получает новую ссылку (Short Name) и запускает процесс копирования.
+    """
     user_data = await state.get_data()
     
     # --- Проверка на "амнезию" (из-за Render free tier) ---
@@ -118,7 +110,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     # ---
     
     original_set_name = user_data.get("original_set_name")
-    new_title = user_data.get("new_title")
+    
+    # (!!!) ИЗМЕНЕНИЕ: Название "зашито" в код (!!!)
+    new_title = "ТГ Канал - @mupowkins"
+    
     new_name = message.text.strip()
     user_id = message.from_user.id
 
@@ -151,18 +146,15 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         stickers_to_add = []
         for sticker in original_set.stickers:
             
-            current_emoji = sticker.emoji
-            if not current_emoji:
-                current_emoji = "🤩" # Эмодзи по умолчанию
-            
             if not sticker.file_id:
                 logging.warning(f"Стикер {sticker.file_unique_id} не имеет file_id, пропускаю.")
                 continue
             
+            # (!!!) ИЗМЕНЕНИЕ: ВСЕ стикеры получают '🤩' (!!!)
             stickers_to_add.append(
                 InputSticker(
                     sticker=sticker.file_id,
-                    emoji_list=[current_emoji]
+                    emoji_list=["🤩"] # Используем только этот эмодзи
                 )
             )
 
@@ -175,8 +167,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
-            title=new_title,
-            stickers=[stickers_to_add[0]], # Передаем первый InputSticker
+            title=new_title, # Используем "зашитое" название
+            stickers=[stickers_to_add[0]], 
             sticker_format=sticker_format
         )
         
@@ -251,4 +243,4 @@ if __name__ == "__main__":
     flask_thread.start()
     
     logging.info("Запуск основного asyncio-бота...")
-    asyncio.run(main)
+    asyncio.run(main())
