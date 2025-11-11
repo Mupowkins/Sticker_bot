@@ -11,11 +11,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
-# ИСПРАВЛЕНИЕ: Импортируем DefaultBotProperties для aiogram 3.7+
+# Это исправление для aiogram 3.7+
 from aiogram.client.bot import DefaultBotProperties 
 
 # --- Конфигурация ---
-# Бот берет токен из настроек Render.com
+# Код ищет токен в "Environment" на Render.com.
+# Ты УЖЕ настроил это. Это ПРАВИЛЬНО.
 BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 
 if not BOT_TOKEN:
@@ -25,7 +26,7 @@ if not BOT_TOKEN:
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# ИСПРАВЛЕНИЕ: Используем DefaultBotProperties для указания parse_mode
+# Это исправление для aiogram 3.7+
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -190,7 +191,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 if i % 10 == 0 or i == len(stickers_to_add) - 1: # Каждые 10 стикеров
                     await msg.edit_text(f"Копирую... {i+1}/{len(stickers_to_add)}")
                 
-                # ИСПРАВЛЕНИЕ: Это полная строка (которая у тебя ломалась)
+                # ВОТ СТРОКА 177, КОТОРАЯ У ТЕБЯ ЛОМАЛАСЬ
+                # УБЕДИСЬ, ЧТО ОНА СКОПИРОВАНА ВЕРНО
                 await asyncio.sleep(0.1) # Задержка от спам-лимитов
 
         # 6. Готово!
