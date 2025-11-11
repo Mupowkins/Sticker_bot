@@ -9,7 +9,8 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+# (!!!) ИСПРАВЛЕНИЕ: Мы ВОЗВРАЩАЕМ InputSticker
+from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.bot import DefaultBotProperties 
 from aiogram.fsm.storage.redis import RedisStorage
@@ -165,7 +166,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
         
-        # 3. Собираем "список" стикеров
+        # --- (!!!) ИСПРАВЛЕНИЕ: Мы ВОЗВРАЩАЕМСЯ к InputSticker (!!!) ---
         stickers_to_add = []
         for sticker in original_set.stickers:
             
@@ -177,15 +178,13 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 logging.warning(f"Стикер {sticker.file_unique_id} не имеет file_id, пропускаю.")
                 continue
             
-            # --- (!!!) ИСПРАВЛЕНИЕ ЗДЕСЬ (!!!) ---
-            # Ошибка `...stickers.0.format` означает,
-            # что aiogram требует поле "format" в этом словаре.
-            sticker_dict = {
-                "sticker": sticker.file_id,
-                "emoji_list": [current_emoji],
-                "format": sticker_format  # Добавляем формат ('static', 'animated' или 'video')
-            }
-            stickers_to_add.append(sticker_dict)
+            # Мы снова создаем объекты InputSticker
+            stickers_to_add.append(
+                InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=[current_emoji]
+                )
+            )
 
         if not stickers_to_add:
             await msg.edit_text("Не могу поверить, но в этом паке нет стикеров. Копирование отменено.")
@@ -197,17 +196,20 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             user_id=user_id,
             name=new_name,
             title=new_title,
-            stickers=[stickers_to_add[0]], # Передаем первый словарь
+            stickers=[stickers_to_add[0]], # Передаем первый InputSticker
             sticker_format=sticker_format
         )
         
         # 5. Добавляем ОСТАЛЬНЫЕ стикеры
         if len(stickers_to_add) > 1:
-            for i, sticker_dict in enumerate(stickers_to_add[1:], start=1):
+            # --- (!!!) ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ (!!!) ---
+            # Раньше тут была ошибка, я передавал `stickers_to_add[i]`
+            # Теперь я передаю сам объект 'sticker_obj' из цикла.
+            for i, sticker_obj in enumerate(stickers_to_add[1:], start=1):
                 await bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_name,
-                    sticker=sticker_dict # Передаем словарь
+                    sticker=sticker_obj # <--- ВОТ ИСПРАВЛЕНИЕ
                 )
                 
                 total_stickers = len(stickers_to_add)
