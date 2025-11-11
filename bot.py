@@ -9,7 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-# Мы снова используем InputSticker
+# (!!!) ВЕРНУЛИ InputSticker - ОШИБКИ 'dict' БОЛЬШЕ НЕТ (!!!)
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.bot import DefaultBotProperties 
@@ -110,7 +110,7 @@ async def get_new_title(message: Message, state: FSMContext):
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     
-    # --- Проверка на "амнезию" ---
+    # --- Проверка на "амнезию" (из-за Render free tier) ---
     if not user_data:
         await message.answer("Ой! Кажется, я 'заснул' и забыл, какой пак мы копируем. Начнем заново. Пожалуйста, отправь мне стикер еще раз.")
         await state.clear()
