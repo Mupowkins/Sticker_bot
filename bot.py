@@ -213,4 +213,30 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     
     except Exception as e:
         await msg.edit_text(f"❌ Произошла критическая ошибка: {e}")
-        logging.exception("Крити
+        logging.exception("Критическая ошибка в get_new_name_and_copy")
+
+    finally:
+        await state.clear()
+
+
+@dp.message()
+async def handle_other_messages(message: Message):
+    """
+    Ловит все остальные сообщения
+    """
+    await message.answer("Я не понимаю. Пожалуйста, отправь мне стикер или ссылку на стикерпак.")
+
+
+# --- Запуск Бота ---
+
+async def main():
+    """
+    Главная функция для запуска бота.
+    """
+    # Эта проверка на токен теперь в самом верху
+    logging.info("Бот запускается...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
