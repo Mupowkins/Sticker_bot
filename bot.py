@@ -1,14 +1,13 @@
-# file: sticker_copy_bot.py
+import os
+import threading
+import http.server
+import socketserver
 import logging
 import re
 from io import BytesIO
 from typing import Dict
 
-from telegram import (
-    Update,
-    InputFile,
-    MessageEntity,
-)
+from telegram import Update, InputFile
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -17,135 +16,134 @@ from telegram.ext import (
     filters,
 )
 
+# ---------- Вспомогательная "заглушка" для Render ----------
+def keep_alive():
+    """Запуск простого HTTP сервера, чтобы Render не останавливал процесс."""
+    port = int(os.environ.get("PORT", 8080))
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        print(f"⚡ Keep-alive сервер запущен на порту {port}")
+        httpd.serve_forever()
+
+# Запускаем в отдельном потоке
+threading.Thread(target=keep_alive, daemon=True).start()
+
 # ---------- Настройка логов ----------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---------- Хранилище состояния (простой dict для демонстрации) ----------
+# ---------- Глобальные состояния пользователей ----------
 USER_STATE: Dict[int, dict] = {}
-# STATE keys per user id:
-# {
-#   "step": "await_confirm" | "await_newname" | None,
-#   "source_name": "<sticker_set_name>",
-#   "stickers": [sticker objects from getStickerSet],
-#   "title": "<original title>"
-# }
 
-# ---------- Помощники ----------
+# ---------- Хелперы ----------
 def ensure_bot_suffix(name: str, bot_username: str) -> str:
     """Гарантировать, что имя набора заканчивается на _by_<bot_username>"""
     if not name.endswith(f"_by_{bot_username}"):
-        # удалить недопустимые символы и добавить суффикс
         base = re.sub(r'[^a-z0-9_]', '_', name.lower())
         return f"{base}_by_{bot_username}"
     return name
 
+
 # ---------- Команды ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Я бот для законного копирования ваших собственных стикерпаков.\n\n"
-        "Отправь мне /copy <имя_набора> или просто пришли ссылку или стикер из набора.\n\n"
-        "Важно: перед созданием нового набора ты должен подтвердить, что ты владеешь правами на стикеры."
+        "👋 Привет! Я бот для законного копирования твоих собственных стикерпаков.\n\n"
+        "Отправь мне /copy <имя_набора> или просто пришли стикер из набора.\n\n"
+        "⚠️ Перед копированием ты должен подтвердить, что обладаешь правами на стикеры."
     )
 
+
 async def copy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Парсим аргумент — имя набора
     args = context.args
     if not args:
-        await update.message.reply_text("Использование: /copy <sticker_set_name> (например, FunnyCats_by_Author).")
+        await update.message.reply_text("Использование: /copy <sticker_set_name>")
         return
 
     source_name = args[0].strip()
     user_id = update.effective_user.id
-
-    # Сохраняем состояние
     USER_STATE[user_id] = {"step": "await_confirm", "source_name": source_name}
+
     await update.message.reply_text(
-        f"Вы хотите скопировать набор `{source_name}`.\n"
-        "Пожалуйста, подтвердите, что вы являетесь владельцем стикеров или имеете разрешение.\n"
-        "Отправьте сообщение: `I confirm I own these stickers` (буквально).",
+        f"Ты хочешь скопировать набор `{source_name}`.\n"
+        "Подтверди, что ты владелец: отправь сообщение `I confirm I own these stickers`.",
         parse_mode="Markdown"
     )
+
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
-
     state = USER_STATE.get(user_id)
+
     if not state:
-        await update.message.reply_text("Не понял. Отправь /copy <имя_набора> или пришли стикер из набора.")
+        await update.message.reply_text("Не понял. Отправь /copy <имя_набора> или стикер из набора.")
         return
 
+    # --- Подтверждение ---
     if state.get("step") == "await_confirm":
         if text == "I confirm I own these stickers":
             source_name = state["source_name"]
             try:
-                # получить набор
                 stickerset = await context.bot.get_sticker_set(source_name)
             except Exception as e:
-                logger.exception("getStickerSet failed")
-                await update.message.reply_text(f"Не удалось получить набор `{source_name}`. Убедитесь, что имя правильное.", parse_mode="Markdown")
+                logger.exception("Ошибка getStickerSet")
+                await update.message.reply_text(f"Не удалось получить набор `{source_name}`.", parse_mode="Markdown")
                 USER_STATE.pop(user_id, None)
                 return
 
-            # сохраняем стикеры в состоянии
             state["stickers"] = stickerset.stickers
             state["title"] = stickerset.title
             state["step"] = "await_newname"
 
             await update.message.reply_text(
-                f"Набор `{source_name}` успешно получен — в нём {len(stickerset.stickers)} стикеров.\n"
-                "Теперь отправьте новое *название* для создаваемого набора (видимое название, например: My Cool Pack).",
+                f"✅ Набор `{source_name}` получен — {len(stickerset.stickers)} стикеров.\n"
+                "Теперь отправь новое *название* набора (например, My New Pack).",
                 parse_mode="Markdown"
             )
         else:
-            await update.message.reply_text("Подтверждение не распознано. Отправьте текст: `I confirm I own these stickers`.")
+            await update.message.reply_text("Отправь точный текст подтверждения: `I confirm I own these stickers`.")
         return
 
+    # --- Получаем новое название ---
     if state.get("step") == "await_newname":
-        new_title = text[:64]  # ограничение длины заголовка
+        new_title = text[:64]
         state["new_title"] = new_title
 
-        # предложим автоматическое машинное имя (endpoint) и уточним
         bot_user = await context.bot.get_me()
         suggested_name = ensure_bot_suffix(re.sub(r'\s+', '_', new_title), bot_user.username)
 
         state["step"] = "creating"
-        await update.message.reply_text(f"Попробую создать новый набор с названием *{new_title}* и машин-именем `{suggested_name}`.\nЭто может занять время...", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"Создаю новый набор *{new_title}* с именем `{suggested_name}`...",
+            parse_mode="Markdown"
+        )
 
-        # выполняем создание
         await create_new_pack_from_state(update, context, user_id, suggested_name)
         USER_STATE.pop(user_id, None)
         return
 
-    # fallback
-    await update.message.reply_text("Непонятный шаг. Начните снова: /copy <имя_набора>")
 
-# ---------- Основная логика: скачивание + создание набора ----------
+# ---------- Логика создания нового набора ----------
 async def create_new_pack_from_state(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, new_pack_name: str):
     state = USER_STATE.get(user_id)
     if not state:
-        await update.message.reply_text("Состояние не найдено — начните снова.")
+        await update.message.reply_text("Ошибка состояния. Попробуй снова.")
         return
 
     stickers = state.get("stickers", [])
     if not stickers:
-        await update.message.reply_text("В наборе нет стикеров или произошла ошибка.")
+        await update.message.reply_text("В наборе нет стикеров.")
         return
 
     bot_username = (await context.bot.get_me()).username
-
-    # проверка суффикса
     if not new_pack_name.endswith(f"_by_{bot_username}"):
-        await update.message.reply_text(
-            f"Имя набора должно заканчиваться на `_by_{bot_username}`. Попробуйте снова."
-        )
+        await update.message.reply_text(f"Имя должно заканчиваться на `_by_{bot_username}`.")
         return
 
-    # Первый стикер - для createNewStickerSet
     created = False
     errors = []
     new_title = state.get("new_title", "New Pack")
+
     for idx, st in enumerate(stickers):
         try:
             file = await context.bot.get_file(st.file_id)
@@ -153,21 +151,16 @@ async def create_new_pack_from_state(update: Update, context: ContextTypes.DEFAU
             await file.download_to_memory(out=bio)
             bio.seek(0)
 
-            # Определяем тип стикера: is_animated, is_video, else static
             if getattr(st, "is_animated", False):
-                input_file = InputFile(bio, filename="sticker.tgs")
-                kwargs = {"tgs_sticker": input_file}
+                kwargs = {"tgs_sticker": InputFile(bio, filename="sticker.tgs")}
             elif getattr(st, "is_video", False):
-                input_file = InputFile(bio, filename="sticker.webm")
-                kwargs = {"webm_sticker": input_file}
+                kwargs = {"webm_sticker": InputFile(bio, filename="sticker.webm")}
             else:
-                input_file = InputFile(bio, filename="sticker.png")
-                kwargs = {"png_sticker": input_file}
+                kwargs = {"png_sticker": InputFile(bio, filename="sticker.png")}
 
-            emojis = st.emojis if hasattr(st, "emojis") and st.emojis else "🙂"
+            emojis = st.emojis or "🙂"
 
             if not created:
-                # create new set
                 await context.bot.create_new_sticker_set(
                     user_id=user_id,
                     name=new_pack_name,
@@ -176,58 +169,48 @@ async def create_new_pack_from_state(update: Update, context: ContextTypes.DEFAU
                     **kwargs
                 )
                 created = True
-                logger.info("Created new sticker set %s", new_pack_name)
             else:
-                # add sticker
                 await context.bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_pack_name,
                     emojis=emojis,
                     **kwargs
                 )
-            # небольшая пауза не требуется, библиотека асинхронная
 
         except Exception as e:
-            logger.exception("Ошибка при обработке стикера")
-            errors.append(f"index {idx}: {e}")
+            logger.exception("Ошибка при добавлении стикера")
+            errors.append(f"{idx}: {e}")
 
-    if created and not errors:
-        await update.message.reply_text(
-            f"Готово! Новый набор создан: `{new_pack_name}`. Откройте t.me/addstickers/{new_pack_name}",
-            parse_mode="Markdown"
-        )
-    elif created:
-        await update.message.reply_text(
-            f"Набор создан с частичными ошибками. Посмотри логи. errors: {errors}"
-        )
+    if created:
+        url = f"https://t.me/addstickers/{new_pack_name}"
+        await update.message.reply_text(f"🎉 Готово! Новый набор: [Открыть]({url})", parse_mode="Markdown")
     else:
-        await update.message.reply_text(f"Не удалось создать набор. Ошибки: {errors}")
+        await update.message.reply_text("Не удалось создать набор. Проверь логи Render.")
 
-# ---------- Обработчик стикеров (если пользователь просто прислал стикер) ----------
+
+# ---------- Обработка стикеров ----------
 async def sticker_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     st = update.message.sticker
     if not st:
         return
 
-    # получаем имя набора, если есть
     if st.set_name:
-        source_name = st.set_name
         user_id = update.effective_user.id
-        USER_STATE[user_id] = {"step": "await_confirm", "source_name": source_name}
+        USER_STATE[user_id] = {"step": "await_confirm", "source_name": st.set_name}
         await update.message.reply_text(
-            f"Вы прислали стикер из набора `{source_name}`.\n"
-            "Если вы хотите скопировать набор, подтвердите: `I confirm I own these stickers`.",
+            f"Ты прислал стикер из `{st.set_name}`.\n"
+            "Чтобы скопировать набор, отправь `I confirm I own these stickers`.",
             parse_mode="Markdown"
         )
     else:
-        await update.message.reply_text("Стикер не принадлежит набору или информация недоступна.")
+        await update.message.reply_text("Этот стикер не связан с набором.")
 
-# ---------- Регистрация и запуск ----------
+
+# ---------- Основная функция ----------
 def main():
-    import os
     TOKEN = os.environ.get("TG_BOT_TOKEN")
     if not TOKEN:
-        raise RuntimeError("Установите переменную окружения TG_BOT_TOKEN с вашим токеном бота.")
+        raise RuntimeError("Установи переменную окружения TG_BOT_TOKEN с токеном бота.")
 
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -236,8 +219,9 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.Sticker.ALL, sticker_message))
 
-    logger.info("Bot started")
+    logger.info("🤖 Бот запущен (polling)...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
