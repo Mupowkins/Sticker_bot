@@ -9,29 +9,21 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-# (!!!) ИСПРАВЛЕНИЕ: Мы ВОЗВРАЩАЕМ InputSticker
+# Мы снова используем InputSticker
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.bot import DefaultBotProperties 
-from aiogram.fsm.storage.redis import RedisStorage
+# (!!!) ИЗМЕНЕНИЕ: Мы УБРАЛИ RedisStorage (!!!)
 
 # --- Конфигурация ---
 # Токен вставлен напрямую, как ты просил
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
-# Ищем URL для Redis
-REDIS_URL = os.environ.get("REDIS_URL")
+# (!!!) ИЗМЕНЕНИЕ: Мы УБРАЛИ проверку REDIS_URL (!!!)
 
 if not BOT_TOKEN:
     logging.critical("Критическая ошибка: Токен BOT_TOKEN не найден.")
     exit()
-
-if not REDIS_URL:
-    logging.critical("Критическая ошибка: REDIS_URL не найден в переменных окружения.")
-    exit("Ошибка: REDIS_URL не найден.")
-
-# Создаем "память" для FSM
-redis_storage = RedisStorage.from_url(REDIS_URL)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -39,8 +31,9 @@ logging.basicConfig(level=logging.INFO)
 # Используем DefaultBotProperties для указания parse_mode
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
-# Передаем "память" в Dispatcher
-dp = Dispatcher(storage=redis_storage)
+# (!!!) ИЗМЕНЕНИЕ: Dispatcher снова без 'storage' (!!!)
+# Он будет использовать память по умолчанию (которая "забывает")
+dp = Dispatcher()
 
 
 # --- Машина состояний (FSM) ---
@@ -50,8 +43,7 @@ class CopyPack(StatesGroup):
 
 
 # --- Обработчики (Хэндлеры) ---
-# (cmd_start, handle_sticker, handle_link, get_new_title
-# не изменились, они включены в код, листай ниже)
+# (Весь остальной код v4, который исправляет ошибку копирования)
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
@@ -166,7 +158,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
         
-        # --- (!!!) ИСПРАВЛЕНИЕ: Мы ВОЗВРАЩАЕМСЯ к InputSticker (!!!) ---
+        # 3. Собираем "список" стикеров (InputSticker)
         stickers_to_add = []
         for sticker in original_set.stickers:
             
@@ -178,7 +170,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 logging.warning(f"Стикер {sticker.file_unique_id} не имеет file_id, пропускаю.")
                 continue
             
-            # Мы снова создаем объекты InputSticker
             stickers_to_add.append(
                 InputSticker(
                     sticker=sticker.file_id,
@@ -202,14 +193,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         
         # 5. Добавляем ОСТАЛЬНЫЕ стикеры
         if len(stickers_to_add) > 1:
-            # --- (!!!) ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ (!!!) ---
-            # Раньше тут была ошибка, я передавал `stickers_to_add[i]`
-            # Теперь я передаю сам объект 'sticker_obj' из цикла.
             for i, sticker_obj in enumerate(stickers_to_add[1:], start=1):
                 await bot.add_sticker_to_set(
                     user_id=user_id,
                     name=new_name,
-                    sticker=sticker_obj # <--- ВОТ ИСПРАВЛЕНИЕ
+                    sticker=sticker_obj # Передаем сам объект
                 )
                 
                 total_stickers = len(stickers_to_add)
