@@ -21,6 +21,32 @@ dp = Dispatcher()
 class CopyPack(StatesGroup):
     waiting_for_new_name = State()
 
+@dp.message(CommandStart())
+async def cmd_start(message: Message):
+    await message.answer("Отправь стикер или ссылку на стикерпак")
+
+@dp.message(F.sticker)
+async def handle_sticker(message: Message, state: FSMContext):
+    if not message.sticker.set_name:
+        await message.answer("Этот стикер не из пака")
+        return
+    
+    await state.update_data(original_set_name=message.sticker.set_name)
+    await state.set_state(CopyPack.waiting_for_new_name)
+    
+    me = await bot.get_me()
+    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
+
+@dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
+async def handle_link(message: Message, state: FSMContext):
+    original_set_name = re.search(r"t\.me/addstickers/([a-zA-Z0-9_]+)", message.text).group(1)
+    
+    await state.update_data(original_set_name=original_set_name)
+    await state.set_state(CopyPack.waiting_for_new_name)
+    
+    me = await bot.get_me()
+    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
+
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
@@ -67,6 +93,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             stickers=first_batch_stickers,
             sticker_format=sticker_format
         )
+
+        # ЗАДЕРЖКА 10 СЕКУНД после создания пака
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\n⏱️ Ожидаю 10 секунд...")
+        await asyncio.sleep(10)
 
         # ЧЕТКИЕ ПАЧКИ ПО ПЛАНУ:
         batches = [
@@ -121,3 +151,29 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await msg.edit_text(f"❌ Ошибка: {e}")
 
     await state.clear()
+
+@dp.message()
+async def handle_other_messages(message: Message):
+    await message.answer("Отправь стикер или ссылку")
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+async def run_bot():
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+def main():
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    asyncio.run(run_bot())
+
+if __name__ == "__main__":
+    main()
