@@ -69,10 +69,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        batch_size = 5
         all_stickers = original_set.stickers
         
-        first_batch = all_stickers[:batch_size]
+        # ПАЧКА 1: стикеры 1-50
+        first_batch = all_stickers[:50]
         first_batch_stickers = []
         
         for sticker in first_batch:
@@ -93,10 +93,20 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text(f"✅ Создан пак\nДобавляю стикеры... {batch_size}/{total_stickers}")
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидаю 10 секунд...")
+        await asyncio.sleep(10)
 
-        for i in range(batch_size, total_stickers, batch_size):
-            batch = all_stickers[i:i + batch_size]
+        # Остальные пачки по 10 стикеров с задержкой 10 секунд
+        batches = [
+            (51, 60), (61, 70), (71, 80), (81, 90), 
+            (91, 100), (101, 110), (111, 120)
+        ]
+
+        for start, end in batches:
+            if start > total_stickers:
+                break
+                
+            batch = all_stickers[start-1:end]
             
             for sticker in batch:
                 emoji = sticker.emoji or "👍"
@@ -112,11 +122,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     sticker=sticker_obj
                 )
             
-            current_progress = min(i + batch_size, total_stickers)
-            await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}")
+            current_end = min(end, total_stickers)
+            await msg.edit_text(f"✅ Добавлено {current_end}/120 стикеров\nОжидаю 10 секунд...")
             
-            if current_progress < total_stickers:
-                await asyncio.sleep(2)
+            if current_end < total_stickers:
+                await asyncio.sleep(10)
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
