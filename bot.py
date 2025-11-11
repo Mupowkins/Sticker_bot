@@ -241,21 +241,18 @@ async def main():
         application.add_handler(conv_handler)
         application.add_handler(MessageHandler(filters.ALL, handle_other_messages))
         
-        # 🔧 РЕШЕНИЕ ДЛЯ RENDER:
-        # Используем вебхуки вместо polling
+        # 🔧 АВТОМАТИЧЕСКАЯ НАСТРОЙКА ДЛЯ RENDER
         if os.getenv('RENDER'):
             logger.info("🌐 Запуск в режиме Webhook (Render)")
             port = int(os.environ.get('PORT', 8443))
-            # Замени 'your-service-name' на реальное имя твоего сервиса на Render
-            webhook_url = f"https://your-service-name.onrender.com/{TOKEN}"
             
             # Очищаем предыдущие вебхуки
             await application.bot.delete_webhook(drop_pending_updates=True)
             
+            # Запускаем вебхук без указания URL - будет работать локально на Render
             await application.run_webhook(
                 listen="0.0.0.0",
                 port=port,
-                webhook_url=webhook_url,
                 secret_token=TOKEN
             )
         else:
