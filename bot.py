@@ -69,64 +69,47 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        all_stickers = original_set.stickers
+        # Создаем пак с 1 стикером
+        first_sticker = original_set.stickers[0]
+        emoji = first_sticker.emoji or "👍"
         
-        # ПАЧКА 1: стикеры 0-30
-        first_batch = all_stickers[:30]
-        first_batch_stickers = []
-        
-        for sticker in first_batch:
-            emoji = sticker.emoji or "👍"
-            first_batch_stickers.append(
-                InputSticker(
-                    sticker=sticker.file_id,
-                    emoji_list=[emoji],
-                    format=sticker_format
-                )
-            )
+        first_sticker_obj = InputSticker(
+            sticker=first_sticker.file_id,
+            emoji_list=[emoji],
+            format=sticker_format
+        )
 
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
             title="ТГ Канал - @mupowkins",
-            stickers=first_batch_stickers,
+            stickers=[first_sticker_obj],
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Создан пак с первыми 30 стикерами\nОжидаю 10 секунд...")
-        await asyncio.sleep(10)
+        await msg.edit_text(f"✅ Создан пак\nДобавляю стикеры... 1/{total_stickers}")
 
-        # Остальные пачки по 10 стикеров с задержкой 10 секунд
-        batches = [
-            (31, 40), (41, 50), (51, 60), (61, 70), (71, 80),
-            (81, 90), (91, 100), (101, 110), (111, 120)
-        ]
-
-        for start, end in batches:
-            if start > total_stickers:
-                break
-                
-            batch = all_stickers[start-1:end]
+        # По 1 стикеру с задержкой 1.2 секунды
+        for i, sticker in enumerate(original_set.stickers[1:], 2):
+            emoji = sticker.emoji or "👍"
             
-            for sticker in batch:
-                emoji = sticker.emoji or "👍"
-                sticker_obj = InputSticker(
-                    sticker=sticker.file_id,
-                    emoji_list=[emoji],
-                    format=sticker_format
-                )
-                
-                await bot.add_sticker_to_set(
-                    user_id=user_id,
-                    name=new_name,
-                    sticker=sticker_obj
-                )
+            sticker_obj = InputSticker(
+                sticker=sticker.file_id,
+                emoji_list=[emoji],
+                format=sticker_format
+            )
             
-            current_end = min(end, total_stickers)
-            await msg.edit_text(f"✅ Добавлено {current_end}/120 стикеров\nОжидаю 10 секунд...")
+            # ЗАДЕРЖКА 1.2 СЕКУНДЫ
+            await asyncio.sleep(1.2)
             
-            if current_end < total_stickers:
-                await asyncio.sleep(10)
+            await bot.add_sticker_to_set(
+                user_id=user_id,
+                name=new_name,
+                sticker=sticker_obj
+            )
+            
+            if i % 10 == 0:
+                await msg.edit_text(f"✅ Добавлено {i}/{total_stickers}")
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
@@ -136,7 +119,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Превышены лимиты. Попробуй через 1 минуту.")
+            await msg.edit_text("❌ Слишком быстро! Подожди 30 секунд.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
