@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: sticker-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        value: "8094703198:AAEszw3K_62yU3oHR0cW3RHvXfxBeUJhy6A"
