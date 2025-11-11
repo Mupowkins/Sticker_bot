@@ -92,8 +92,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\n⏱️ Ожидаю 3 секунды...")
-        await asyncio.sleep(3)
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\n⏱️ Ожидаю 5 секунд...")
+        await asyncio.sleep(5)
 
         batches = [
             (51, 60), (61, 70), (71, 80), (81, 90), 
@@ -123,14 +123,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             current_end = min(end, total_stickers)
             
             if current_end < total_stickers:
-                if batch_num % 2 == 1:
-                    delay = 3
-                    await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю 3 секунды...")
-                else:
-                    delay = 10
-                    await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю 10 секунд...")
-                
-                await asyncio.sleep(delay)
+                # ФИКСИРОВАННАЯ ЗАДЕРЖКА 5 СЕКУНД
+                await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю 5 секунд...")
+                await asyncio.sleep(5)
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
