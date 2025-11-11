@@ -71,8 +71,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
 
         all_stickers = original_set.stickers
         
-        # ПАЧКА 1: стикеры 1-50
-        first_batch = all_stickers[:50]
+        # ПАЧКА 1: стикеры 0-30
+        first_batch = all_stickers[:30]
         first_batch_stickers = []
         
         for sticker in first_batch:
@@ -93,13 +93,13 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидаю 10 секунд...")
+        await msg.edit_text("✅ Создан пак с первыми 30 стикерами\nОжидаю 10 секунд...")
         await asyncio.sleep(10)
 
         # Остальные пачки по 10 стикеров с задержкой 10 секунд
         batches = [
-            (51, 60), (61, 70), (71, 80), (81, 90), 
-            (91, 100), (101, 110), (111, 120)
+            (31, 40), (41, 50), (51, 60), (61, 70), (71, 80),
+            (81, 90), (91, 100), (101, 110), (111, 120)
         ]
 
         for start, end in batches:
@@ -136,7 +136,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Превышены лимиты. Попробуй через 30 секунд.")
+            await msg.edit_text("❌ Превышены лимиты. Попробуй через 1 минуту.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
