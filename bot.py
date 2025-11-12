@@ -4,7 +4,6 @@ import re
 import os  
 import threading 
 import random
-# Убираем 'time', он нам больше не нужен
 from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -13,11 +12,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
+# ИСПРАВЛЕНИЕ: Добавляем DefaultBotProperties для ParseMode
 from aiogram.client.bot import DefaultBotProperties
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
+# ИСПРАВЛЕНИЕ: Возвращаем ParseMode.HTML, чтобы бот понимал <b>, <i> и т.д.
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -81,12 +82,13 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # --- (!!!) НОВАЯ ЛОГИКА ЗАДЕРЖЕК V2 (по твоему ТЗ) (!!!) ---
+        # --- (!!!) НОВАЯ ЛОГИКА ЗАДЕРЖЕК V3 (по твоему ТЗ) (!!!) ---
 
         # Функция-помощник для конвертации в InputSticker
         def convert_sticker(sticker):
             if not sticker.file_id:
                 return None
+            # ИСПРАВЛЕНИЕ: Используем '🤩' и 'format'
             return InputSticker(
                 sticker=sticker.file_id,
                 emoji_list=["🤩"], # Все стикеры с 🤩
@@ -125,9 +127,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         # ПАЧКИ 2, 3, 4 (51-80, 81-100, 101-120)
         # (start_index, end_index, delay_after)
         batches_config = [
-            (50, 80, 20.0),  # 51-80
-            (80, 100, 20.0), # 81-100
-            (100, 120, 0.0)  # 101-120 (задержка 0, т.к. последняя)
+            (50, 80, 30.0),  # 51-80
+            (80, 100, 30.0), # 81-100
+            (100, 120, 30.0) # 101-120 (ставим 30, хоть это и последняя)
         ]
 
         for start_idx, end_idx, delay in batches_config:
@@ -144,12 +146,27 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             for sticker in batch:
                 sticker_obj = convert_sticker(sticker)
                 if sticker_obj:
-                    await bot.add_sticker_to_set(
-                        user_id=user_id,
-                        name=new_name,
-                        sticker=sticker_obj
-                    )
-            
+                    # Добавляем по одному, чтобы не словить лимит на размер пачки
+                    try:
+                        await bot.add_sticker_to_set(
+                            user_id=user_id,
+                            name=new_name,
+                            sticker=sticker_obj
+                        )
+                    except TelegramBadRequest as e:
+                        # Ловим флуд-контроль ДАЖЕ внутри пачки
+                        if "Flood control" in str(e) or "Too Many Requests" in str(e):
+                            await msg.edit_text(f"❗️ Временный флуд-контроль внутри пачки... Сплю 10с.")
+                            await asyncio.sleep(10.0)
+                            # Повторная попытка
+                            await bot.add_sticker_to_set(
+                                user_id=user_id,
+                                name=new_name,
+                                sticker=sticker_obj
+                            )
+                        else:
+                            raise e # Поднимаем другую ошибку
+
             # Считаем, сколько всего добавлено
             current_total_added = min(end_idx, total_stickers)
             
@@ -157,7 +174,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             if current_total_added >= total_stickers:
                 break # Закончили, выходим из цикла
             
-            # ЗАДЕРЖКА: Ровно 20 секунд (или 0 для последней)
+            # ЗАДЕРЖКА: Ровно 30 секунд
             await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю {delay} секунд...</b>")
             if delay > 0:
                 await asyncio.sleep(delay)
