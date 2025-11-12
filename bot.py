@@ -63,51 +63,34 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         original_set = await bot.get_sticker_set(original_set_name)
         total_stickers = len(original_set.stickers)
 
-        # Проверяем, есть ли смешанные форматы
-        has_video = any(sticker.is_video for sticker in original_set.stickers)
-        has_animated = any(sticker.is_animated for sticker in original_set.stickers)
-        has_static = any(not sticker.is_video and not sticker.is_animated for sticker in original_set.stickers)
-
-        # Определяем основной формат пака
-        if has_video:
-            sticker_format = "video"
-            await msg.edit_text("🎥 Обнаружены видео стикеры...")
-        elif has_animated:
-            sticker_format = "animated"
-            await msg.edit_text("🎬 Обнаружены анимированные стикеры...")
-        else:
-            sticker_format = "static"
-            await msg.edit_text("📷 Обнаружены статичные стикеры...")
-
-        # Если смешанные форматы - предупреждаем пользователя
-        format_count = sum([has_video, has_animated, has_static])
-        if format_count > 1:
-            await msg.edit_text("⚠️ В паке смешанные форматы стикеров. Копирую только основной тип...")
-
         all_stickers = original_set.stickers
         
-        # Фильтруем стикеры по основному формату
-        if has_video:
-            filtered_stickers = [sticker for sticker in all_stickers if sticker.is_video]
-        elif has_animated:
-            filtered_stickers = [sticker for sticker in all_stickers if sticker.is_animated]
+        # Определяем ОСНОВНОЙ формат пака (для создания)
+        # Берем формат первого стикера
+        first_sticker = all_stickers[0]
+        if first_sticker.is_video:
+            main_format = "video"
+        elif first_sticker.is_animated:
+            main_format = "animated"
         else:
-            filtered_stickers = [sticker for sticker in all_stickers if not sticker.is_video and not sticker.is_animated]
+            main_format = "static"
 
-        # Если после фильтрации стикеров нет - используем все
-        if not filtered_stickers:
-            filtered_stickers = all_stickers
-            await msg.edit_text("⚠️ Не удалось определить формат, копирую все стикеры...")
-
-        total_to_copy = len(filtered_stickers)
+        await msg.edit_text(f"🔄 Создаю пак со смешанными форматами ({total_stickers} стикеров)...")
         
-        # ПАЧКА 1: создаем пак с первыми 50 стикерами ОДНОГО ФОРМАТА
-        await msg.edit_text(f"🔄 Создаю пак с первыми {min(50, total_to_copy)} стикерами...")
-        first_batch = filtered_stickers[:50]
+        # ПАЧКА 1: создаем пак с первыми 50 стикерами
+        first_batch = all_stickers[:50]
         first_batch_stickers = []
         
         for sticker in first_batch:
             emoji = sticker.emoji or "👍"
+            # Определяем формат КАЖДОГО стикера индивидуально
+            if sticker.is_video:
+                sticker_format = "video"
+            elif sticker.is_animated:
+                sticker_format = "animated"
+            else:
+                sticker_format = "static"
+                
             first_batch_stickers.append(
                 InputSticker(
                     sticker=sticker.file_id,
@@ -116,23 +99,32 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 )
             )
 
+        # Создаем пак с ОСНОВНЫМ форматом, но стикеры имеют свои индивидуальные форматы
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
             title="ТГ Канал - @mupowkins",
             stickers=first_batch_stickers,
-            sticker_format=sticker_format
+            sticker_format=main_format  # Основной формат для создания пака
         )
 
         await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание ~10 секунд.")
         await asyncio.sleep(10)
 
-        # Добавляем остальные стикеры ОДНОГО ФОРМАТА
-        if total_to_copy > 50:
-            remaining_stickers = filtered_stickers[50:]
+        # Добавляем остальные стикеры с их индивидуальными форматами
+        if total_stickers > 50:
+            remaining_stickers = all_stickers[50:]
             
             for i, sticker in enumerate(remaining_stickers, 51):
                 emoji = sticker.emoji or "👍"
+                # Определяем формат КАЖДОГО стикера индивидуально
+                if sticker.is_video:
+                    sticker_format = "video"
+                elif sticker.is_animated:
+                    sticker_format = "animated"
+                else:
+                    sticker_format = "static"
+                    
                 sticker_obj = InputSticker(
                     sticker=sticker.file_id,
                     emoji_list=[emoji],
@@ -150,9 +142,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 
                 # Обновляем прогресс каждые 10 стикеров
                 if i % 10 == 0:
-                    await msg.edit_text(f"✅ Добавлено {i}/{total_to_copy}")
+                    await msg.edit_text(f"✅ Добавлено {i}/{total_stickers}")
 
-        await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_to_copy}")
+        await msg.edit_text(f"✅ Готово!\nСмешанный стикерпак создан!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
@@ -161,6 +153,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
             await msg.edit_text("❌ Флуд-контроль! Попробуй через 2 минуты.")
+        elif "STICKER_PNG_NOPNG" in str(e) or "STICKER_TGS_NOTGS" in str(e) or "STICKER_WEBM_NOWEBM" in str(e):
+            await msg.edit_text("❌ Ошибка формата стикеров. Попробуй другой стикерпак.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
