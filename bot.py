@@ -3,7 +3,6 @@ import logging
 import re
 import os  
 import threading 
-# import random # <-- УБРАН
 from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -12,14 +11,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
-# (!!!) ДОБАВЛЕНО: Это нужно для ParseMode
-from aiogram.client.bot import DefaultBotProperties 
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-# (!!!) ИСПРАВЛЕНО: Бот теперь будет понимать Markdown (для _курсива_)
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 class CopyPack(StatesGroup):
@@ -39,7 +35,7 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
+    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
 async def handle_link(message: Message, state: FSMContext):
@@ -49,19 +45,11 @@ async def handle_link(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
+    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
-    
-    # --- Проверка на "амнезию" (если бот "уснул") ---
-    if not user_data:
-        await message.answer("Ой! Кажется, я 'заснул' и забыл, какой пак мы копируем. Начнем заново. Пожалуйста, отправь мне стикер еще раз.")
-        await state.clear()
-        return
-    # ---
-
     original_set_name = user_data.get("original_set_name")
     new_name = message.text.strip()
     user_id = message.from_user.id
@@ -75,17 +63,47 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         original_set = await bot.get_sticker_set(original_set_name)
         total_stickers = len(original_set.stickers)
 
-        sticker_format = "static"
-        if original_set.is_animated:
-            sticker_format = "animated"
-        elif original_set.is_video:
+        # Проверяем, есть ли смешанные форматы
+        has_video = any(sticker.is_video for sticker in original_set.stickers)
+        has_animated = any(sticker.is_animated for sticker in original_set.stickers)
+        has_static = any(not sticker.is_video and not sticker.is_animated for sticker in original_set.stickers)
+
+        # Определяем основной формат пака
+        if has_video:
             sticker_format = "video"
+            await msg.edit_text("🎥 Обнаружены видео стикеры...")
+        elif has_animated:
+            sticker_format = "animated"
+            await msg.edit_text("🎬 Обнаружены анимированные стикеры...")
+        else:
+            sticker_format = "static"
+            await msg.edit_text("📷 Обнаружены статичные стикеры...")
+
+        # Если смешанные форматы - предупреждаем пользователя
+        format_count = sum([has_video, has_animated, has_static])
+        if format_count > 1:
+            await msg.edit_text("⚠️ В паке смешанные форматы стикеров. Копирую только основной тип...")
 
         all_stickers = original_set.stickers
         
-        # ПАЧКА 1: создаем пак с 50 стикерами
-        await msg.edit_text("🔄 Создаю пак с первыми 50 стикерами...")
-        first_batch = all_stickers[:50]
+        # Фильтруем стикеры по основному формату
+        if has_video:
+            filtered_stickers = [sticker for sticker in all_stickers if sticker.is_video]
+        elif has_animated:
+            filtered_stickers = [sticker for sticker in all_stickers if sticker.is_animated]
+        else:
+            filtered_stickers = [sticker for sticker in all_stickers if not sticker.is_video and not sticker.is_animated]
+
+        # Если после фильтрации стикеров нет - используем все
+        if not filtered_stickers:
+            filtered_stickers = all_stickers
+            await msg.edit_text("⚠️ Не удалось определить формат, копирую все стикеры...")
+
+        total_to_copy = len(filtered_stickers)
+        
+        # ПАЧКА 1: создаем пак с первыми 50 стикерами ОДНОГО ФОРМАТА
+        await msg.edit_text(f"🔄 Создаю пак с первыми {min(50, total_to_copy)} стикерами...")
+        first_batch = filtered_stickers[:50]
         first_batch_stickers = []
         
         for sticker in first_batch:
@@ -98,11 +116,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 )
             )
 
-        if not first_batch_stickers:
-            await msg.edit_text("❌ В этом паке нет стикеров.")
-            await state.clear()
-            return
-
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
@@ -111,25 +124,14 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        # (!!!) ИЗМЕНЕНИЕ ТЕКСТА (!!!)
-        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОсталось ~10 секунд.")
-        await asyncio.sleep(10) # Фиксированная задержка
+        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание ~10 секунд.")
+        await asyncio.sleep(10)
 
-        # Остальные пачки по 10 стикеров с фиксированной задержкой 10 секунд
-        batch_size = 10
-        batches = [
-            (51, 60), (61, 70), (71, 80), (81, 90), 
-            (91, 100), (101, 110), (111, 120)
-        ]
-
-        for start, end in batches:
-            if start > total_stickers:
-                break
-                
-            batch = all_stickers[start-1:end]
+        # Добавляем остальные стикеры ОДНОГО ФОРМАТА
+        if total_to_copy > 50:
+            remaining_stickers = filtered_stickers[50:]
             
-            # Добавляем пачку из 10 стикеров БЕЗ задержек внутри пачки
-            for sticker in batch:
+            for i, sticker in enumerate(remaining_stickers, 51):
                 emoji = sticker.emoji or "👍"
                 sticker_obj = InputSticker(
                     sticker=sticker.file_id,
@@ -142,16 +144,15 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     name=new_name,
                     sticker=sticker_obj
                 )
-            
-            current_end = min(end, total_stickers)
-            
-            # ФИКСИРОВАННАЯ ЗАДЕРЖКА 10 СЕКУНД
-            if current_end < total_stickers:
-                # (!!!) ИЗМЕНЕНИЕ ТЕКСТА (!!!)
-                await msg.edit_text(f"✅ Добавлено {current_end}/120\nОсталось ~10 секунд.")
-                await asyncio.sleep(10) # Фиксированная задержка
+                
+                # Задержка 1.1 секунды между стикерами
+                await asyncio.sleep(1.1)
+                
+                # Обновляем прогресс каждые 10 стикеров
+                if i % 10 == 0:
+                    await msg.edit_text(f"✅ Добавлено {i}/{total_to_copy}")
 
-        await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
+        await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_to_copy}")
 
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
