@@ -3,6 +3,7 @@ import logging
 import re
 import os  
 import threading 
+import random
 from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -71,8 +72,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
 
         all_stickers = original_set.stickers
         
-        # ПАЧКА 1: создаем пак с 50 стикерами
-        await msg.edit_text("🔄 Создаю пак с первыми 50 стикерами...")
+        # ПАЧКА 1: создаем пак сразу с 50 стикерами
         first_batch = all_stickers[:50]
         first_batch_stickers = []
         
@@ -94,25 +94,26 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Пак создан\n⏱️ Ожидаю 25 секунд...")
-        await asyncio.sleep(25)
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидаю 10-15 секунд...")
+        
+        # СЛУЧАЙНАЯ ЗАДЕРЖКА 10-15 секунд
+        first_delay = random.uniform(10.0, 15.0)
+        await asyncio.sleep(first_delay)
 
-        # ЧЕТКИЕ ПАЧКИ ПО ПЛАНУ:
+        # Остальные пачки по 10 стикеров со случайными задержками 10-15 секунд
+        batch_size = 10
         batches = [
-            (51, 70, 20),   # 51-70, задержка 20 сек
-            (71, 90, 20),   # 71-90, задержка 20 сек
-            (91, 100, 20),  # 91-100, задержка 20 сек
-            (101, 120, 20)  # 101-120, задержка 20 сек
+            (51, 60), (61, 70), (71, 80), (81, 90), 
+            (91, 100), (101, 110), (111, 120)
         ]
 
-        for start, end, delay in batches:
+        for start, end in batches:
             if start > total_stickers:
                 break
                 
-            # Добавляем пачку стикеров
             batch = all_stickers[start-1:end]
-            await msg.edit_text(f"🔄 Добавляю стикеры {start}-{end}...")
             
+            # Добавляем пачку из 10 стикеров БЕЗ задержек внутри пачки
             for sticker in batch:
                 emoji = sticker.emoji or "👍"
                 sticker_obj = InputSticker(
@@ -129,9 +130,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             
             current_end = min(end, total_stickers)
             
-            # ЗАДЕРЖКА по плану
+            # СЛУЧАЙНАЯ ЗАДЕРЖКА 10-15 секунд между пачками
             if current_end < total_stickers:
-                await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю {delay} секунд...")
+                delay = random.uniform(10.0, 15.0)
+                await msg.edit_text(f"✅ Добавлено {current_end}/120 стикеров\nОжидаю {delay:.1f} секунд...")
                 await asyncio.sleep(delay)
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
@@ -142,7 +144,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Флуд-контроль! Попробуй через 5 минут.")
+            await msg.edit_text("❌ Флуд-контроль! Попробуй через 2 минуты.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
