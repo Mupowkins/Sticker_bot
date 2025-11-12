@@ -94,7 +94,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=sticker_format
         )
 
-        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\n⏱️ Ожидаю 10 секунд...")
+        await msg.edit_text("✅ Создан пак с первыми 50 стикерами\nОжидание ~10 секунд.")
         await asyncio.sleep(10)
 
         # Остальные пачки по 10 стикеров с фиксированной задержкой 10 секунд
@@ -129,7 +129,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             
             # ФИКСИРОВАННАЯ ЗАДЕРЖКА 10 СЕКУНД
             if current_end < total_stickers:
-                await msg.edit_text(f"✅ Добавлено {current_end}/120\n⏱️ Ожидаю 10 секунд...")
+                await msg.edit_text(f"✅ Добавлено {current_end}/120\nОжидание ~10 секунд.")
                 await asyncio.sleep(10)
 
         await msg.edit_text(f"✅ Готово!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
