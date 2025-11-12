@@ -4,7 +4,7 @@ import re
 import os  
 import threading 
 import random
-import time # <-- ДОБАВЛЕНО: для замера времени
+# Убираем 'time', он нам больше не нужен
 from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -81,26 +81,22 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # --- (!!!) ИСПРАВЛЕННАЯ ЛОГИКА ЗАДЕРЖЕК (!!!) ---
+        # --- (!!!) НОВАЯ ЛОГИКА ЗАДЕРЖЕК V2 (по твоему ТЗ) (!!!) ---
 
-        # ПАЧКА 1: (1-50 стикеров)
-        time_start_batch_1 = time.time() # Засекаем время
-        
-        first_batch_size = min(50, total_stickers)
-        first_batch = all_stickers[:first_batch_size]
-        first_batch_stickers = []
-        
-        for sticker in first_batch:
-            emoji = sticker.emoji or "👍"
-            first_batch_stickers.append(
-                InputSticker(
-                    sticker=sticker.file_id,
-                    emoji_list=[emoji],
-                    format=sticker_format # Поле format ОБЯЗАТЕЛЬНО
-                )
+        # Функция-помощник для конвертации в InputSticker
+        def convert_sticker(sticker):
+            if not sticker.file_id:
+                return None
+            return InputSticker(
+                sticker=sticker.file_id,
+                emoji_list=["🤩"], # Все стикеры с 🤩
+                format=sticker_format # Поле format ОБЯЗАТЕЛЬНО
             )
 
-        if not first_batch_stickers:
+        # ПАЧКА 1: (1-50 стикеров)
+        batch_1_objects = [convert_sticker(s) for s in all_stickers[:50] if s.file_id]
+        
+        if not batch_1_objects:
             await msg.edit_text("❌ В этом паке нет стикеров.")
             await state.clear()
             return
@@ -110,71 +106,61 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             user_id=user_id,
             name=new_name,
             title="ТГ Канал - @mupowkins",
-            stickers=first_batch_stickers,
+            stickers=batch_1_objects, # Передаем пачку
             sticker_format=sticker_format
         )
         
-        time_end_batch_1 = time.time()
-        time_spent_batch_1 = time_end_batch_1 - time_start_batch_1
-
+        current_total_added = len(batch_1_objects)
+        
         # Проверяем, есть ли еще стикеры
-        if total_stickers <= first_batch_size:
+        if total_stickers <= current_total_added:
             await msg.edit_text(f"✅ <b>Готово!</b>\nПак скопирован: t.me/addstickers/{new_name}\nВсего стикеров: {total_stickers}")
             await state.clear()
             return
 
-        # ЗАДЕРЖКА 1: 20 секунд (с учетом потраченного времени)
-        total_delay_1 = 20.0
-        sleep_time_1 = max(0, total_delay_1 - time_spent_batch_1) # Не даем уйти в минус
-        
-        await msg.edit_text(f"✅ Добавлено {first_batch_size}/{total_stickers} стикеров.\n(Потрачено {time_spent_batch_1:.1f}с, сплю {sleep_time_1:.1f}с)")
-        await asyncio.sleep(sleep_time_1)
+        # ЗАДЕРЖКА 1: Ровно 30 секунд
+        await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю 30 секунд...</b>")
+        await asyncio.sleep(30.0)
 
-        # ПАЧКИ 2-8: (51-120 стикеров)
-        batches = [
-            (51, 60), (61, 70), (71, 80), (81, 90), 
-            (91, 100), (101, 110), (111, 120)
+        # ПАЧКИ 2, 3, 4 (51-80, 81-100, 101-120)
+        # (start_index, end_index, delay_after)
+        batches_config = [
+            (50, 80, 20.0),  # 51-80
+            (80, 100, 20.0), # 81-100
+            (100, 120, 0.0)  # 101-120 (задержка 0, т.к. последняя)
         ]
 
-        for start, end in batches:
-            if (start - 1) >= total_stickers:
+        for start_idx, end_idx, delay in batches_config:
+            
+            # Проверяем, есть ли стикеры в этом диапазоне
+            if start_idx >= total_stickers:
                 break 
-            
-            time_start_batch = time.time() # Засекаем время
-            
-            batch = all_stickers[start-1:end]
+                
+            batch = all_stickers[start_idx:end_idx]
             if not batch:
                 break
-
-            # Добавляем пачку из 10 стикеров
+            
+            # Добавляем стикеры из этой пачки
             for sticker in batch:
-                emoji = sticker.emoji or "👍"
-                sticker_obj = InputSticker(
-                    sticker=sticker.file_id,
-                    emoji_list=[emoji],
-                    format=sticker_format # Поле format ОБЯЗАТЕЛЬНО
-                )
-                
-                await bot.add_sticker_to_set(
-                    user_id=user_id,
-                    name=new_name,
-                    sticker=sticker_obj
-                )
+                sticker_obj = convert_sticker(sticker)
+                if sticker_obj:
+                    await bot.add_sticker_to_set(
+                        user_id=user_id,
+                        name=new_name,
+                        sticker=sticker_obj
+                    )
             
-            time_end_batch = time.time()
-            time_spent_batch = time_end_batch - time_start_batch
+            # Считаем, сколько всего добавлено
+            current_total_added = min(end_idx, total_stickers)
             
-            current_total_added = min(end, total_stickers)
-            
+            # Проверяем, не закончили ли мы
             if current_total_added >= total_stickers:
-                break # Закончили, выходим
-
-            # ЗАДЕРЖКА 2: 15-20 секунд (с учетом потраченного времени)
-            total_delay = random.uniform(15.0, 20.0)
-            sleep_time = max(0, total_delay - time_spent_batch) # Не даем уйти в минус
-
-            await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n(Потрачено {time_spent_batch:.1f}с, сплю {sleep_time:.1f}с)")
-            await asyncio.sleep(sleep_time)
+                break # Закончили, выходим из цикла
+            
+            # ЗАДЕРЖКА: Ровно 20 секунд (или 0 для последней)
+            await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю {delay} секунд...</b>")
+            if delay > 0:
+                await asyncio.sleep(delay)
 
         # --- Конец цикла ---
 
