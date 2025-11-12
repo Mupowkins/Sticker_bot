@@ -80,14 +80,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # --- (!!!) НОВАЯ ОПТИМИЗИРОВАННАЯ ЛОГИКА (!!!) ---
+        # --- (!!!) НОВАЯ ЛОГИКА (1-50, затем 1с/стикер) (!!!) ---
 
         # 1. Определяем МАКС. РАЗМЕР ПЕРВОЙ ПАЧКИ
-        # 120 для static/animated, 50 для video
-        if sticker_format == "video":
-            max_initial_batch_size = 50
-        else:
-            max_initial_batch_size = 120 # static/animated
+        # (Пользовательское правило: 1-50)
+        max_initial_batch_size = 50
 
         # 2. Функция-помощник для конвертации
         def convert_sticker(sticker):
@@ -99,11 +96,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 format=sticker_format # Поле format ОБЯЗАТЕЛЬНО
             )
 
-        # 3. ПАЧКА 1: (1-120 или 1-50 стикеров)
-        
-        # Берем столько, сколько можем, но не больше, чем есть
+        # 3. ПАЧКА 1: (1-50 стикеров)
         initial_batch_size = min(max_initial_batch_size, total_stickers)
-        
         batch_1_objects = [convert_sticker(s) for s in all_stickers[:initial_batch_size] if s and s.file_id]
         
         if not batch_1_objects:
@@ -112,7 +106,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             return
 
         # Создаем пак ОДНИМ ЗАПРОСОМ
-        await msg.edit_text(f"⏳ Создаю пак с первыми {len(batch_1_objects)} стикерами... (Это может занять до 30с)")
+        await msg.edit_text(f"⏳ Создаю пак с первыми {len(batch_1_objects)} стикерами...")
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
@@ -129,20 +123,18 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # 5. ПАЧКА 2: (Остаток, 121+ или 51+) - по 1 стикеру
+        # 5. ПАЧКА 2: (Остаток, 51+) - 10 стикеров в 10 секунд (1с/стикер)
         
-        # Берем срез всех остальных стикеров
         remaining_stickers = all_stickers[current_total_added:]
         
-        await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers}.\nДобавляю оставшиеся {len(remaining_stickers)} (по 1 в 1.5с)...")
+        await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers}.\nДобавляю оставшиеся {len(remaining_stickers)} (по 1 в 1.0с)...")
         
         for i, sticker in enumerate(remaining_stickers):
             
             sticker_obj = convert_sticker(sticker)
             if not sticker_obj:
-                continue # Пропускаем битый стикер
+                continue 
 
-            # Добавляем ОДИН стикер
             try:
                 await bot.add_sticker_to_set(
                     user_id=user_id,
@@ -153,34 +145,31 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 if "Flood control" in str(e) or "Too Many Requests" in str(e):
                     await msg.edit_text(f"❗️ Флуд-контроль! (на {current_total_added+1}-м стикере)\nСплю 15с и пробую снова...")
                     await asyncio.sleep(15.0)
-                    # Повторная попытка
                     await bot.add_sticker_to_set(
                         user_id=user_id,
                         name=new_name,
                         sticker=sticker_obj
                     )
                 else:
-                    raise e # Поднимаем другую ошибку
+                    raise e 
             
-            # Считаем, сколько всего добавлено
             current_total_added = i + 1 + initial_batch_size
             
             # --- Обновление прогресса ---
-            if current_total_added % 10 == 0: # 130, 140, 150...
+            if current_total_added % 10 == 0: 
                 await msg.edit_text(f"⏳ Добавлено {current_total_added}/{total_stickers} стикеров...")
 
-            # (!!!) ЗАДЕРЖКА (!!!)
-            # Ставим 1.5с, чтобы ГАРАНТИРОВАННО не ловить флуд
-            await asyncio.sleep(1.5)
+            # (!!!) НОВАЯ ЗАДЕРЖКА (!!!)
+            # 10 стикеров в 10 секунд = 1 стикер в 1 секунду
+            await asyncio.sleep(1.0)
 
         # --- Конец цикла ---
-
         await msg.edit_text(f"✅ <b>Готово!</b>\nПак скопирован: t.me/addstickers/{new_name}\nВсего стикеров: {total_stickers}")
 
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
             await msg.edit_text(f"❌ <b>Ошибка:</b> Имя <code>{new_name}</code> уже занято. Попробуй другое.")
-            return # Не сбрасываем состояние, даем попробовать еще раз
+            return 
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ <b>Ошибка:</b> Пак не найден. Возможно, ссылка битая.")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
@@ -192,7 +181,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await msg.edit_text(f"❌ <b>Критическая ошибка:</b> {e}")
         logging.exception("Критическая ошибка в get_new_name_and_copy")
 
-    # Сбрасываем состояние в любом случае (кроме 'name taken')
     current_state = await state.get_state()
     if current_state is not None:
         await state.clear()
@@ -207,18 +195,13 @@ app = Flask(__name__)
 
 @app.route('/')
 def i_am_alive():
-    """Render будет стучаться сюда, чтобы проверить, 'жив' ли сервис"""
     return "Bot is alive!"
 
 def run_flask():
-    """Запускает веб-сервер в отдельном потоке"""
     port = int(os.environ.get("PORT", 8080)) 
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 async def main():
-    """
-    Главная функция для запуска бота.
-    """
     logging.info("Бот запускается (через main)...")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
