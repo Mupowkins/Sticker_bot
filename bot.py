@@ -4,6 +4,7 @@ import re
 import os  
 import threading 
 import random
+import time # <-- ДОБАВЛЕНО: для замера времени
 from flask import Flask 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ParseMode
@@ -12,13 +13,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
-# ИСПРАВЛЕНИЕ: Добавляем DefaultBotProperties для ParseMode
 from aiogram.client.bot import DefaultBotProperties
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-# ИСПРАВЛЕНИЕ: Возвращаем ParseMode.HTML, чтобы бот понимал <b>, <i> и т.д.
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -82,9 +81,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # --- (!!!) НОВАЯ ЛОГИКА ЗАДЕРЖЕК (!!!) ---
+        # --- (!!!) ИСПРАВЛЕННАЯ ЛОГИКА ЗАДЕРЖЕК (!!!) ---
 
         # ПАЧКА 1: (1-50 стикеров)
+        time_start_batch_1 = time.time() # Засекаем время
+        
         first_batch_size = min(50, total_stickers)
         first_batch = all_stickers[:first_batch_size]
         first_batch_stickers = []
@@ -95,7 +96,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 InputSticker(
                     sticker=sticker.file_id,
                     emoji_list=[emoji],
-                    format=sticker_format # ИСПРАВЛЕНИЕ: это поле ОБЯЗАТЕЛЬНО
+                    format=sticker_format # Поле format ОБЯЗАТЕЛЬНО
                 )
             )
 
@@ -112,6 +113,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             stickers=first_batch_stickers,
             sticker_format=sticker_format
         )
+        
+        time_end_batch_1 = time.time()
+        time_spent_batch_1 = time_end_batch_1 - time_start_batch_1
 
         # Проверяем, есть ли еще стикеры
         if total_stickers <= first_batch_size:
@@ -119,9 +123,12 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # ЗАДЕРЖКА 1: 20 секунд (по твоему ТЗ)
-        await msg.edit_text(f"✅ Добавлено {first_batch_size}/{total_stickers} стикеров.\n<b>Ожидаю 20 секунд...</b>")
-        await asyncio.sleep(20.0)
+        # ЗАДЕРЖКА 1: 20 секунд (с учетом потраченного времени)
+        total_delay_1 = 20.0
+        sleep_time_1 = max(0, total_delay_1 - time_spent_batch_1) # Не даем уйти в минус
+        
+        await msg.edit_text(f"✅ Добавлено {first_batch_size}/{total_stickers} стикеров.\n(Потрачено {time_spent_batch_1:.1f}с, сплю {sleep_time_1:.1f}с)")
+        await asyncio.sleep(sleep_time_1)
 
         # ПАЧКИ 2-8: (51-120 стикеров)
         batches = [
@@ -130,24 +137,22 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         ]
 
         for start, end in batches:
-            # Проверяем, нужны ли еще итерации
-            # (start-1) т.к. индексы с 0. (51-й стикер = индекс 50)
             if (start - 1) >= total_stickers:
                 break 
-                
-            # Берем срез (e.g., [50:60] для 51-60)
-            batch = all_stickers[start-1:end]
             
+            time_start_batch = time.time() # Засекаем время
+            
+            batch = all_stickers[start-1:end]
             if not batch:
-                break # На всякий случай
+                break
 
-            # Добавляем пачку из 10 стикеров (без задержек *внутри* пачки)
+            # Добавляем пачку из 10 стикеров
             for sticker in batch:
                 emoji = sticker.emoji or "👍"
                 sticker_obj = InputSticker(
                     sticker=sticker.file_id,
                     emoji_list=[emoji],
-                    format=sticker_format # ИСПРАВЛЕНИЕ: это поле ОБЯЗАТЕЛЬНО
+                    format=sticker_format # Поле format ОБЯЗАТЕЛЬНО
                 )
                 
                 await bot.add_sticker_to_set(
@@ -156,17 +161,20 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     sticker=sticker_obj
                 )
             
-            # Считаем, сколько всего добавлено
+            time_end_batch = time.time()
+            time_spent_batch = time_end_batch - time_start_batch
+            
             current_total_added = min(end, total_stickers)
             
-            # Проверяем, не закончили ли мы
             if current_total_added >= total_stickers:
-                break # Закончили, выходим из цикла
+                break # Закончили, выходим
 
-            # ЗАДЕРЖКА 2: 15-20 секунд (по твоему ТЗ)
-            delay = random.uniform(15.0, 20.0)
-            await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю {delay:.1f} секунд...</b>")
-            await asyncio.sleep(delay)
+            # ЗАДЕРЖКА 2: 15-20 секунд (с учетом потраченного времени)
+            total_delay = random.uniform(15.0, 20.0)
+            sleep_time = max(0, total_delay - time_spent_batch) # Не даем уйти в минус
+
+            await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n(Потрачено {time_spent_batch:.1f}с, сплю {sleep_time:.1f}с)")
+            await asyncio.sleep(sleep_time)
 
         # --- Конец цикла ---
 
@@ -208,7 +216,6 @@ def i_am_alive():
 def run_flask():
     """Запускает веб-сервер в отдельном потоке"""
     port = int(os.environ.get("PORT", 8080)) 
-    # Убираем debug и reloader, они не нужны в "production" на Render
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 async def main():
@@ -221,7 +228,6 @@ async def main():
 
 if __name__ == "__main__":
     logging.info("Запуск Flask-потока...")
-    # daemon=True гарантирует, что Flask-поток умрет, если основной (бот) упадет
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
