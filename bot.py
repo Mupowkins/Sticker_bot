@@ -24,8 +24,8 @@ class CopyPack(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    # (!!!) ДОБАВЛЕНА ВЕРСИЯ V6, ЧТОБЫ МЫ ВИДЕЛИ, ЧТО КОД ОБНОВИЛСЯ (!!!)
-    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v6 - пачки по 25)*")
+    # (!!!) ВЕРСИЯ V7 (исправлен суффикс) (!!!)
+    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v7 - исправлен баг с суффиксом)*")
 
 @dp.message(F.sticker)
 async def handle_sticker(message: Message, state: FSMContext):
@@ -59,13 +59,50 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         return
 
     original_set_name = user_data.get("original_set_name")
-    new_name = message.text.strip()
+    user_input_name = message.text.strip() # Имя от пользователя
     user_id = message.from_user.id
 
     me = await bot.get_me()
-    new_name = new_name + f"_by_{me.username}"
+    bot_suffix = f"_by_{me.username}" # _by_MupowkinsBOT
     
-    msg = await message.answer("⏳ Начинаю копирование...")
+    # --- (!!!) НОВАЯ, ИСПРАВЛЕННАЯ ЛОГИКА СУФФИКСА (!!!) ---
+    
+    # 1. Берем "чистое" имя от бота, без суффикса
+    clean_bot_suffix = f"by_{me.username}" # by_MupowkinsBOT
+    
+    # 2. Приводим всё к нижнему регистру для поиска
+    user_input_lower = user_input_name.lower()
+    suffix_lower = clean_bot_suffix.lower() # by_mupowkinsbot
+    
+    # 3. Ищем, есть ли суффикс (с _ или без) в конце
+    if user_input_lower.endswith(suffix_lower) or user_input_lower.endswith(f"_{suffix_lower}"):
+        # Нашли суффикс, нужно его отрезать
+        
+        # Находим, где он начинается
+        index = user_input_lower.rfind(suffix_lower)
+        
+        # Отрезаем всё, что до него (включая _ если он там был)
+        if index > 0 and user_input_lower[index-1] == '_':
+            index -= 1 # Захватываем еще и _
+            
+        base_name = user_input_name[:index] # Отрезали!
+    else:
+        # Суффикса не было, просто используем имя
+        base_name = user_input_name
+
+    # 4. Убираем случайные '_' в конце имени (если были, типа "test__by_bot")
+    base_name = base_name.rstrip('_')
+
+    # 5. Собираем ФИНАЛЬНОЕ правильное имя
+    new_name = base_name + bot_suffix
+    
+    # Сообщаем пользователю, только если имя изменилось
+    if new_name != user_input_name:
+         await message.answer(f"Я привел имя к стандарту. Финальное имя: *{new_name}*")
+    
+    # --- (!!!) КОНЕЦ НОВОЙ ЛОГИКИ (!!!) ---
+    
+    msg = await message.answer(f"⏳ Принято. Начинаю копирование для *{new_name}*...")
 
     try:
         original_set = await bot.get_sticker_set(original_set_name)
@@ -136,10 +173,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch_stickers)} стикерами.\nОжидание ~12 секунд...")
         await asyncio.sleep(12) 
 
-        # (!!!) ИЗМЕНЕНИЕ: Новая "нарезка" пачек (по 25) (!!!)
+        # (!!!) Пачки по 25 (!!!)
         if total_stickers > 50:
             
-            # (start_index, end_index)
             batches_config = [
                 (50, 75),  # 51-75 (25 стикеров)
                 (75, 100), # 76-100 (25 стикеров)
