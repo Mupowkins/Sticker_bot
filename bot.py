@@ -11,12 +11,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
+# (!!!) ДОБАВЛЕНО: Это нужно для ParseMode
 from aiogram.client.bot import DefaultBotProperties 
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-# Мы используем ParseMode.MARKDOWN, как в твоем коде
+# (!!!) ИСПРАВЛЕНО: Бот теперь будет понимать Markdown (для _курсива_)
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 dp = Dispatcher()
 
@@ -37,6 +38,7 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
+    # (!!!) ТЕПЕРЬ ЭТО БУДЕТ КУРСИВОМ:
     await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
@@ -47,16 +49,19 @@ async def handle_link(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
+    # (!!!) ТЕПЕРЬ ЭТО БУДЕТ КУРСИВОМ:
     await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     
+    # (!!!) ДОБАВЛЕНО: Проверка на "амнезию" (критически важно для Render)
     if not user_data:
         await message.answer("Ой! Кажется, я 'заснул' и забыл, какой пак мы копируем. Начнем заново. Пожалуйста, отправь мне стикер еще раз.")
         await state.clear()
         return
+    # ---
 
     original_set_name = user_data.get("original_set_name")
     new_name = message.text.strip()
@@ -73,6 +78,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
 
         all_stickers = original_set.stickers
         
+        # Определяем ОСНОВНОЙ формат пака
         first_sticker = all_stickers[0]
         if first_sticker.is_video:
             main_format = "video"
@@ -81,7 +87,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         else:
             main_format = "static"
 
-        await msg.edit_text(f"🔄 Создаю пак со смешанными форматами ({total_stickers} стикеров)...")
+        await msg.edit_text(f"🔄 Создаю пак ({total_stickers} стикеров)...")
         
         # ПАЧКА 1: создаем пак с первыми 50 стикерами
         first_batch = all_stickers[:50]
@@ -109,7 +115,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # (!!!) ИСПРАВЛЕНИЕ: ДОБАВЛЕНА ЛОВУШКА ДЛЯ ФЛУД-КОНТРОЛЯ (!!!)
+        # (!!!) ДОБАВЛЕНА ЛОВУШКА ДЛЯ ФЛУД-КОНТРОЛЯ (!!!)
         try:
             await bot.create_new_sticker_set(
                 user_id=user_id,
@@ -120,18 +126,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             )
         except TelegramBadRequest as e:
             if "Flood control" in str(e) or "Too Many Requests" in str(e):
-                # Ищем, сколько секунд ждать
                 match = re.search(r"retry after (\d+)", str(e))
-                if match:
-                    wait_time = int(match.group(1)) + 1 # +1 на всякий случай
-                else:
-                    wait_time = 30 # Если не знаем, ждем 30
-                
-                await msg.edit_text(f"❗️ *Флуд-контроль на создании пака!*\nТелеграм просит подождать. Жду {wait_time}с...")
+                wait_time = int(match.group(1)) + 2 if match else 30
+                await msg.edit_text(f"❗️ *Флуд-контроль на создании пака!*\nЖду {wait_time}с...")
                 await asyncio.sleep(wait_time)
-                
-                # Повторная попытка
-                await msg.edit_text("Повторная попытка создания пака...")
                 await bot.create_new_sticker_set(
                     user_id=user_id,
                     name=new_name,
@@ -140,12 +138,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     sticker_format=main_format
                 )
             else:
-                raise # Поднимаем любую другую (не флуд) ошибку
+                raise
         
-        # (!!!) КОНЕЦ ИСПРАВЛЕНИЯ (!!!)
-
-        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание ~12 секунд...")
-        await asyncio.sleep(12)  # 12 секунд после создания пака
+        # (!!!) ИЗМЕНЕНИЕ: ФИКСИРОВАННАЯ ЗАДЕРЖКА 12 СЕКУНД И ПРОСТОЙ ТЕКСТ
+        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами.\nПауза для обхода флуд-контроля...")
+        await asyncio.sleep(12.0)  # 12 секунд после создания пака
 
         # Добавляем остальные стикеры пачками с задержкой 12 секунд
         if total_stickers > 50:
@@ -155,6 +152,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             for i in range(0, len(remaining_stickers), batch_size):
                 batch = remaining_stickers[i:i + batch_size]
                 
+                # Быстро добавляем пачку стикеров (без задержек внутри пачки)
                 for sticker in batch:
                     emoji = sticker.emoji or "👍"
                     if sticker.is_video:
@@ -176,10 +174,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                             name=new_name,
                             sticker=sticker_obj
                         )
-                    # (!!!) ДОБАВЛЕНО: Ловушка флуд-контроля ДЛЯ ADD_STICKER (!!!)
                     except TelegramBadRequest as e:
                          if "Flood control" in str(e) or "Too Many Requests" in str(e):
-                            await msg.edit_text(f"❗️ *Флуд-контроль на добавлении стикера!*\nСплю 15с...")
+                            await msg.edit_text(f"❗️ *Флуд-контроль на добавлении!*\nСплю 15с...")
                             await asyncio.sleep(15.0)
                             await bot.add_sticker_to_set(
                                 user_id=user_id,
@@ -188,13 +185,13 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                             )
                          else:
                             raise e
-
                 
                 current_progress = 50 + i + len(batch)
                 
+                # (!!!) ИЗМЕНЕНИЕ: ФИКСИРОВАННАЯ ЗАДЕРЖКА 12 СЕКУНД И ПРОСТОЙ ТЕКСТ
                 if current_progress < total_stickers:
-                    await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание ~12 секунд...")
-                    await asyncio.sleep(12) 
+                    await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nПауза для обхода флуд-контроля...")
+                    await asyncio.sleep(12.0) # 12 секунд между пачками
 
         await msg.edit_text(f"✅ Готово!\nСмешанный стикерпак создан!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
@@ -204,7 +201,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "STICKERSET_INVALID" in str(e):
             await msg.edit_text("❌ Пак не найден")
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
-            await msg.edit_text("❌ Слишком быстро! (Общая ошибка)\nПодожди 30 секунд.")
+            await msg.edit_text("❌ Слишком быстро! Подожди 30 секунд.")
         elif "STICKER_PNG_NOPNG" in str(e) or "STICKER_TGS_NOTGS" in str(e) or "STICKER_WEBM_NOWEBM" in str(e):
             await msg.edit_text("❌ Ошибка формата стикеров. Попробуй другой стикерпак.")
         else:
