@@ -24,7 +24,8 @@ class CopyPack(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer("Отправь стикер или ссылку на стикерпак")
+    # (!!!) ДОБАВЛЕНА ВЕРСИЯ V6, ЧТОБЫ МЫ ВИДЕЛИ, ЧТО КОД ОБНОВИЛСЯ (!!!)
+    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v6 - пачки по 25)*")
 
 @dp.message(F.sticker)
 async def handle_sticker(message: Message, state: FSMContext):
@@ -52,7 +53,6 @@ async def handle_link(message: Message, state: FSMContext):
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     
-    # (!!!) ВНИМАНИЕ: Проверка на "амнезию" (из-за Render free tier) (!!!)
     if not user_data:
         await message.answer("Ой! Кажется, я 'заснул' и забыл, какой пак мы копируем. Начнем заново. Пожалуйста, отправь мне стикер еще раз.")
         await state.clear()
@@ -72,7 +72,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         total_stickers = len(original_set.stickers)
         all_stickers = original_set.stickers
         
-        # (!!!) ИСПРАВЛЕНИЕ: ПРАВИЛЬНОЕ определение формата (!!!)
         if original_set.is_video:
             main_format = "video"
         elif original_set.is_animated:
@@ -87,7 +86,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         first_batch_stickers = []
         
         for sticker in first_batch:
-            # Копируем ТОЛЬКО стикеры нужного формата
             is_correct_format = (
                 (main_format == "video" and sticker.is_video) or
                 (main_format == "animated" and sticker.is_animated) or
@@ -100,7 +98,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     InputSticker(
                         sticker=sticker.file_id,
                         emoji_list=[emoji],
-                        format=main_format # Всегда используем ОДИН формат
+                        format=main_format 
                     )
                 )
 
@@ -109,7 +107,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # (!!!) Ловушка для флуд-контроля (!!!)
+        # Ловушка для флуд-контроля
         try:
             await bot.create_new_sticker_set(
                 user_id=user_id,
@@ -138,7 +136,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch_stickers)} стикерами.\nОжидание ~12 секунд...")
         await asyncio.sleep(12) 
 
-        # (!!!) ИЗМЕНЕНИЕ: Новая "нарезка" пачек (!!!)
+        # (!!!) ИЗМЕНЕНИЕ: Новая "нарезка" пачек (по 25) (!!!)
         if total_stickers > 50:
             
             # (start_index, end_index)
@@ -150,7 +148,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
 
             for start_idx, end_idx in batches_config:
                 
-                # Проверяем, есть ли стикеры в этом диапазоне
                 if start_idx >= total_stickers:
                     break 
                     
@@ -160,9 +157,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 
                 await msg.edit_text(f"⏳ Добавляю стикеры {start_idx+1}-{min(end_idx, total_stickers)}...")
                 
-                # Добавляем стикеры из этой пачки
                 for sticker in batch:
-                    # Снова проверяем формат
                     is_correct_format = (
                         (main_format == "video" and sticker.is_video) or
                         (main_format == "animated" and sticker.is_animated) or
@@ -174,7 +169,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                         sticker_obj = InputSticker(
                             sticker=sticker.file_id,
                             emoji_list=[emoji],
-                            format=main_format # Всегда ОДИН формат
+                            format=main_format
                         )
                         
                         try:
