@@ -34,8 +34,12 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.update_data(original_set_name=message.sticker.set_name)
     await state.set_state(CopyPack.waiting_for_new_name)
     
-    me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
+    await message.answer(
+        "📝 Придумай имя для стикерпака\n\n"
+        "Я автоматически добавлю префикс 'Mupowkins_' в начало.\n"
+        "Например, если введешь 'cats' - получится 'Mupowkins_cats'\n\n"
+        "Введи имя:"
+    )
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
 async def handle_link(message: Message, state: FSMContext):
@@ -44,18 +48,22 @@ async def handle_link(message: Message, state: FSMContext):
     await state.update_data(original_set_name=original_set_name)
     await state.set_state(CopyPack.waiting_for_new_name)
     
-    me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
+    await message.answer(
+        "📝 Придумай имя для стикерпака\n\n"
+        "Я автоматически добавлю префикс 'Mupowkins_' в начало.\n"
+        "Например, если введешь 'cats' - получится 'Mupowkins_cats'\n\n"
+        "Введи имя:"
+    )
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     original_set_name = user_data.get("original_set_name")
-    new_name = message.text.strip()
+    user_input_name = message.text.strip()
     user_id = message.from_user.id
 
-    me = await bot.get_me()
-    new_name = new_name + f"_by_{me.username}"
+    # Используем ПРЕФИКС вместо суффикса
+    new_name = f"Mupowkins_{user_input_name}"
     
     msg = await message.answer("⏳ Начинаю копирование...")
 
