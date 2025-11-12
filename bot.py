@@ -16,7 +16,7 @@ from aiogram.client.bot import DefaultBotProperties
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-# (!!!) ИСПРАВЛЕНИЕ: Вернули ParseMode.HTML, чтобы он не "съедал" _ в ссылках (!!!)
+# (!!!) ИСПОЛЬЗУЕМ HTML, ЧТОБЫ ССЫЛКИ НЕ ЛОМАЛИСЬ (!!!)
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -25,8 +25,7 @@ class CopyPack(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    # (!!!) ВЕРСИЯ V9 (!!!)
-    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v9 - фикс ссылок HTML)*")
+    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v11 - старая логика форматов)*")
 
 @dp.message(F.sticker)
 async def handle_sticker(message: Message, state: FSMContext):
@@ -38,7 +37,6 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    # (!!!) ИСПОЛЬЗУЕМ HTML (<i>) (!!!)
     await message.answer(f"Придумай имя для нового пака (я добавлю <i>_by_{me.username}_</i>)")
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
@@ -55,6 +53,7 @@ async def handle_link(message: Message, state: FSMContext):
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
     
+    # (!!!) Проверка на "амнезию" (ОЧЕНЬ ВАЖНО БЕЗ REDIS) (!!!)
     if not user_data:
         await message.answer("Ой! Кажется, я 'заснул' и забыл, какой пак мы копируем. Начнем заново. Пожалуйста, отправь мне стикер еще раз.")
         await state.clear()
@@ -67,7 +66,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     me = await bot.get_me()
     bot_suffix = f"_by_{me.username}" 
     
-    # --- (!!!) ЛОГИКА СУФФИКСА (v8, она была правильной) (!!!) ---
+    # --- Логика суффикса (v8) ---
     clean_bot_suffix = f"by_{me.username}"
     user_input_lower = user_input_name.lower()
     suffix_lower = clean_bot_suffix.lower() 
@@ -84,7 +83,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     base_name = base_name.rstrip('_')
     new_name = base_name + bot_suffix
     
-    # (!!!) ИСПОЛЬЗУЕМ HTML (<b>) (!!!)
     if new_name != user_input_name:
          await message.answer(f"Я привел имя к стандарту. Финальное имя: <b>{new_name}</b>")
     
@@ -95,39 +93,42 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         total_stickers = len(original_set.stickers)
         all_stickers = original_set.stickers
         
-        if original_set.is_video:
+        # (!!!) ВОЗВРАЩЕНА "СТАРАЯ" (твоя) ЛОГИКА ФОРМАТОВ (!!!)
+        # Определяем ОСНОВНОЙ формат пака (по первому стикеру)
+        first_sticker = all_stickers[0]
+        if first_sticker.is_video:
             main_format = "video"
-        elif original_set.is_animated:
+        elif first_sticker.is_animated:
             main_format = "animated"
         else:
             main_format = "static"
 
-        # (!!!) ИСПОЛЬЗУЕМ HTML (<b>) (!!!)
-        await msg.edit_text(f"🔄 Найден <b>{main_format}</b> пак ({total_stickers} стикеров).\nКопирую...")
+        await msg.edit_text(f"🔄 Создаю *{main_format}* пак ({total_stickers} стикеров)... (может 'упасть', если пак смешанный)")
         
         # ПАЧКА 1: создаем пак с первыми 50 стикерами
         first_batch = all_stickers[:50]
         first_batch_stickers = []
         
         for sticker in first_batch:
-            is_correct_format = (
-                (main_format == "video" and sticker.is_video) or
-                (main_format == "animated" and sticker.is_animated) or
-                (main_format == "static" and not sticker.is_animated and not sticker.is_video)
+            emoji = sticker.emoji or "👍"
+            # Определяем формат КАЖДОГО стикера
+            if sticker.is_video:
+                sticker_format = "video"
+            elif sticker.is_animated:
+                sticker_format = "animated"
+            else:
+                sticker_format = "static"
+                
+            first_batch_stickers.append(
+                InputSticker(
+                    sticker=sticker.file_id,
+                    emoji_list=[emoji],
+                    format=sticker_format
+                )
             )
 
-            if is_correct_format:
-                emoji = sticker.emoji or "👍"
-                first_batch_stickers.append(
-                    InputSticker(
-                        sticker=sticker.file_id,
-                        emoji_list=[emoji],
-                        format=main_format 
-                    )
-                )
-
         if not first_batch_stickers:
-            await msg.edit_text("❌ В этом паке нет стикеров нужного формата.")
+            await msg.edit_text("❌ В этом паке нет стикеров.")
             await state.clear()
             return
 
@@ -144,7 +145,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             if "Flood control" in str(e) or "Too Many Requests" in str(e):
                 match = re.search(r"retry after (\d+)", str(e))
                 wait_time = int(match.group(1)) + 2 if match else 30
-                # (!!!) ИСПОЛЬЗУЕМ HTML (<b>/<i>) (!!!)
                 await msg.edit_text(f"❗️ <b>Флуд-контроль на создании пака!</b>\nЖду {wait_time}с...")
                 await asyncio.sleep(wait_time)
                 await bot.create_new_sticker_set(
@@ -182,38 +182,38 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 await msg.edit_text(f"⏳ Добавляю стикеры {start_idx+1}-{min(end_idx, total_stickers)}...")
                 
                 for sticker in batch:
-                    is_correct_format = (
-                        (main_format == "video" and sticker.is_video) or
-                        (main_format == "animated" and sticker.is_animated) or
-                        (main_format == "static" and not sticker.is_animated and not sticker.is_video)
-                    )
-                    
-                    if is_correct_format:
-                        emoji = sticker.emoji or "👍"
-                        sticker_obj = InputSticker(
-                            sticker=sticker.file_id,
-                            emoji_list=[emoji],
-                            format=main_format
-                        )
+                    # (!!!) СНОВА "СТАРАЯ" ЛОГИКА ФОРМАТОВ (!!!)
+                    emoji = sticker.emoji or "👍"
+                    if sticker.is_video:
+                        sticker_format = "video"
+                    elif sticker.is_animated:
+                        sticker_format = "animated"
+                    else:
+                        sticker_format = "static"
                         
-                        try:
+                    sticker_obj = InputSticker(
+                        sticker=sticker.file_id,
+                        emoji_list=[emoji],
+                        format=sticker_format
+                    )
+                        
+                    try:
+                        await bot.add_sticker_to_set(
+                            user_id=user_id,
+                            name=new_name,
+                            sticker=sticker_obj
+                        )
+                    except TelegramBadRequest as e:
+                         if "Flood control" in str(e) or "Too Many Requests" in str(e):
+                            await msg.edit_text(f"❗️ <b>Флуд-контроль на добавлении!</b>\nСплю 15с...")
+                            await asyncio.sleep(15.0)
                             await bot.add_sticker_to_set(
                                 user_id=user_id,
                                 name=new_name,
                                 sticker=sticker_obj
                             )
-                        except TelegramBadRequest as e:
-                             if "Flood control" in str(e) or "Too Many Requests" in str(e):
-                                # (!!!) ИСПОЛЬЗУЕМ HTML (<b>/<i>) (!!!)
-                                await msg.edit_text(f"❗️ <b>Флуд-контроль на добавлении!</b>\nСплю 15с...")
-                                await asyncio.sleep(15.0)
-                                await bot.add_sticker_to_set(
-                                    user_id=user_id,
-                                    name=new_name,
-                                    sticker=sticker_obj
-                                )
-                             else:
-                                raise e
+                         else:
+                            raise e
                 
                 current_progress = min(end_idx, total_stickers)
                 
@@ -221,8 +221,6 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание ~12 секунд...")
                     await asyncio.sleep(12) 
 
-        # (!!!) ИСПОЛЬЗУЕМ HTML (<b>) (!!!)
-        # Ссылка {new_name} теперь будет отображаться ПРАВИЛЬНО
         await msg.edit_text(f"✅ Готово!\n<b>{main_format}</b> пак создан!\nt.me/addstickers/{new_name}\nСтикеров скопировано: {total_stickers}")
 
     except TelegramBadRequest as e:
@@ -233,7 +231,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif "Flood control" in str(e) or "Too Many Requests" in str(e):
             await msg.edit_text("❌ Слишком быстро! Подожди 30 секунд.")
         elif "STICKER_PNG_NOPNG" in str(e) or "STICKER_TGS_NOTGS" in str(e) or "STICKER_WEBM_NOWEBM" in str(e):
-            await msg.edit_text("❌ Ошибка формата стикеров. Похоже, это 'сломанный' смешанный пак, который Телеграм не может обработать.")
+            await msg.edit_text("❌ *Ошибка формата!* Телеграм не дал смешать разные типы стикеров.")
         else:
             await msg.edit_text(f"❌ Ошибка: {e}")
     
