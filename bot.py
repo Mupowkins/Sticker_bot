@@ -16,7 +16,8 @@ from aiogram.client.bot import DefaultBotProperties
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
+# (!!!) ИСПРАВЛЕНИЕ: Вернули ParseMode.HTML, чтобы он не "съедал" _ в ссылках (!!!)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 class CopyPack(StatesGroup):
@@ -24,8 +25,8 @@ class CopyPack(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    # (!!!) ВЕРСИЯ V8 (!!!)
-    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v8 - финальный фикс суффикса)*")
+    # (!!!) ВЕРСИЯ V9 (!!!)
+    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v9 - фикс ссылок HTML)*")
 
 @dp.message(F.sticker)
 async def handle_sticker(message: Message, state: FSMContext):
@@ -37,7 +38,8 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
+    # (!!!) ИСПОЛЬЗУЕМ HTML (<i>) (!!!)
+    await message.answer(f"Придумай имя для нового пака (я добавлю <i>_by_{me.username}_</i>)")
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
 async def handle_link(message: Message, state: FSMContext):
@@ -47,7 +49,7 @@ async def handle_link(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
+    await message.answer(f"Придумай имя для нового пака (я добавлю <i>_by_{me.username}_</i>)")
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
@@ -59,47 +61,34 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         return
 
     original_set_name = user_data.get("original_set_name")
-    user_input_name = message.text.strip() # Имя от пользователя
+    user_input_name = message.text.strip()
     user_id = message.from_user.id
 
     me = await bot.get_me()
-    bot_suffix = f"_by_{me.username}" # _by_MupowkinsBOT
+    bot_suffix = f"_by_{me.username}" 
     
-    # --- (!!!) НОВАЯ, ПРОСТАЯ И НАДЕЖНАЯ ЛОГИКА СУФФИКСА (!!!) ---
-    
-    # 1. Берем "чистое" имя бота
-    clean_bot_suffix = f"by_{me.username}" # by_MupowkinsBOT
-    
-    # 2. Приводим всё к нижнему регистру для поиска
+    # --- (!!!) ЛОГИКА СУФФИКСА (v8, она была правильной) (!!!) ---
+    clean_bot_suffix = f"by_{me.username}"
     user_input_lower = user_input_name.lower()
-    suffix_lower = clean_bot_suffix.lower() # by_mupowkinsbot
+    suffix_lower = clean_bot_suffix.lower() 
 
-    # 3. Ищем, есть ли суффикс (с _ или без) в конце
     if user_input_lower.endswith(suffix_lower):
-        # Если да, отрезаем его
         index = user_input_lower.rfind(suffix_lower)
         base_name = user_input_name[:index]
     elif user_input_lower.endswith(f"_{suffix_lower}"):
-        # Если да (с _), отрезаем его
         index = user_input_lower.rfind(f"_{suffix_lower}")
         base_name = user_input_name[:index]
     else:
-        # Суффикса не было, просто используем имя
         base_name = user_input_name
 
-    # 4. Убираем случайные '_' в конце имени (если были, типа "test__")
     base_name = base_name.rstrip('_')
-
-    # 5. Собираем ФИНАЛЬНОЕ правильное имя
     new_name = base_name + bot_suffix
     
-    # Сообщаем пользователю, только если имя изменилось
+    # (!!!) ИСПОЛЬЗУЕМ HTML (<b>) (!!!)
     if new_name != user_input_name:
-         await message.answer(f"Я привел имя к стандарту. Финальное имя: *{new_name}*")
+         await message.answer(f"Я привел имя к стандарту. Финальное имя: <b>{new_name}</b>")
     
-    # --- (!!!) КОНЕЦ НОВОЙ ЛОГИКИ (!!!) ---
-    
-    msg = await message.answer(f"⏳ Принято. Начинаю копирование для *{new_name}*...")
+    msg = await message.answer(f"⏳ Принято. Начинаю копирование для <b>{new_name}</b>...")
 
     try:
         original_set = await bot.get_sticker_set(original_set_name)
@@ -113,7 +102,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         else:
             main_format = "static"
 
-        await msg.edit_text(f"🔄 Найден *{main_format}* пак ({total_stickers} стикеров).\nКопирую...")
+        # (!!!) ИСПОЛЬЗУЕМ HTML (<b>) (!!!)
+        await msg.edit_text(f"🔄 Найден <b>{main_format}</b> пак ({total_stickers} стикеров).\nКопирую...")
         
         # ПАЧКА 1: создаем пак с первыми 50 стикерами
         first_batch = all_stickers[:50]
@@ -154,7 +144,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             if "Flood control" in str(e) or "Too Many Requests" in str(e):
                 match = re.search(r"retry after (\d+)", str(e))
                 wait_time = int(match.group(1)) + 2 if match else 30
-                await msg.edit_text(f"❗️ *Флуд-контроль на создании пака!*\nЖду {wait_time}с...")
+                # (!!!) ИСПОЛЬЗУЕМ HTML (<b>/<i>) (!!!)
+                await msg.edit_text(f"❗️ <b>Флуд-контроль на создании пака!</b>\nЖду {wait_time}с...")
                 await asyncio.sleep(wait_time)
                 await bot.create_new_sticker_set(
                     user_id=user_id,
@@ -213,7 +204,8 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                             )
                         except TelegramBadRequest as e:
                              if "Flood control" in str(e) or "Too Many Requests" in str(e):
-                                await msg.edit_text(f"❗️ *Флуд-контроль на добавлении!*\nСплю 15с...")
+                                # (!!!) ИСПОЛЬЗУЕМ HTML (<b>/<i>) (!!!)
+                                await msg.edit_text(f"❗️ <b>Флуд-контроль на добавлении!</b>\nСплю 15с...")
                                 await asyncio.sleep(15.0)
                                 await bot.add_sticker_to_set(
                                     user_id=user_id,
@@ -229,7 +221,9 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                     await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание ~12 секунд...")
                     await asyncio.sleep(12) 
 
-        await msg.edit_text(f"✅ Готово!\n*{main_format}* пак создан!\nt.me/addstickers/{new_name}\nСтикеров скопировано: {total_stickers}")
+        # (!!!) ИСПОЛЬЗУЕМ HTML (<b>) (!!!)
+        # Ссылка {new_name} теперь будет отображаться ПРАВИЛЬНО
+        await msg.edit_text(f"✅ Готово!\n<b>{main_format}</b> пак создан!\nt.me/addstickers/{new_name}\nСтикеров скопировано: {total_stickers}")
 
     except TelegramBadRequest as e:
         if "sticker set name is already taken" in str(e):
