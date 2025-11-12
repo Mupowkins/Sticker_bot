@@ -24,8 +24,8 @@ class CopyPack(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
-    # (!!!) ВЕРСИЯ V7 (исправлен суффикс) (!!!)
-    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v7 - исправлен баг с суффиксом)*")
+    # (!!!) ВЕРСИЯ V8 (!!!)
+    await message.answer("Отправь стикер или ссылку на стикерпак\n*(v8 - финальный фикс суффикса)*")
 
 @dp.message(F.sticker)
 async def handle_sticker(message: Message, state: FSMContext):
@@ -65,32 +65,29 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
     me = await bot.get_me()
     bot_suffix = f"_by_{me.username}" # _by_MupowkinsBOT
     
-    # --- (!!!) НОВАЯ, ИСПРАВЛЕННАЯ ЛОГИКА СУФФИКСА (!!!) ---
+    # --- (!!!) НОВАЯ, ПРОСТАЯ И НАДЕЖНАЯ ЛОГИКА СУФФИКСА (!!!) ---
     
-    # 1. Берем "чистое" имя от бота, без суффикса
+    # 1. Берем "чистое" имя бота
     clean_bot_suffix = f"by_{me.username}" # by_MupowkinsBOT
     
     # 2. Приводим всё к нижнему регистру для поиска
     user_input_lower = user_input_name.lower()
     suffix_lower = clean_bot_suffix.lower() # by_mupowkinsbot
-    
+
     # 3. Ищем, есть ли суффикс (с _ или без) в конце
-    if user_input_lower.endswith(suffix_lower) or user_input_lower.endswith(f"_{suffix_lower}"):
-        # Нашли суффикс, нужно его отрезать
-        
-        # Находим, где он начинается
+    if user_input_lower.endswith(suffix_lower):
+        # Если да, отрезаем его
         index = user_input_lower.rfind(suffix_lower)
-        
-        # Отрезаем всё, что до него (включая _ если он там был)
-        if index > 0 and user_input_lower[index-1] == '_':
-            index -= 1 # Захватываем еще и _
-            
-        base_name = user_input_name[:index] # Отрезали!
+        base_name = user_input_name[:index]
+    elif user_input_lower.endswith(f"_{suffix_lower}"):
+        # Если да (с _), отрезаем его
+        index = user_input_lower.rfind(f"_{suffix_lower}")
+        base_name = user_input_name[:index]
     else:
         # Суффикса не было, просто используем имя
         base_name = user_input_name
 
-    # 4. Убираем случайные '_' в конце имени (если были, типа "test__by_bot")
+    # 4. Убираем случайные '_' в конце имени (если были, типа "test__")
     base_name = base_name.rstrip('_')
 
     # 5. Собираем ФИНАЛЬНОЕ правильное имя
