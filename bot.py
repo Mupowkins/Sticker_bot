@@ -11,11 +11,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
+# (!!!) ДОБАВЛЕНО: Это нужно для ParseMode
+from aiogram.client.bot import DefaultBotProperties 
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN)
+# (!!!) ИСПРАВЛЕНО: Бот теперь будет понимать Markdown (для _курсива_)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 dp = Dispatcher()
 
 class CopyPack(StatesGroup):
@@ -35,7 +38,8 @@ async def handle_sticker(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
+    # (!!!) ТЕПЕРЬ ЭТО БУДЕТ КУРСИВОМ:
+    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
 
 @dp.message(F.text.regexp(r"t\.me/addstickers/([a-zA-Z0-9_]+)"))
 async def handle_link(message: Message, state: FSMContext):
@@ -45,11 +49,20 @@ async def handle_link(message: Message, state: FSMContext):
     await state.set_state(CopyPack.waiting_for_new_name)
     
     me = await bot.get_me()
-    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username})")
+    # (!!!) ТЕПЕРЬ ЭТО БУДЕТ КУРСИВОМ:
+    await message.answer(f"Придумай имя для нового пака (я добавлю _by_{me.username}_)")
 
 @dp.message(CopyPack.waiting_for_new_name)
 async def get_new_name_and_copy(message: Message, state: FSMContext):
     user_data = await state.get_data()
+    
+    # (!!!) ДОБАВЛЕНО: Проверка на "амнезию" (критически важно для Render)
+    if not user_data:
+        await message.answer("Ой! Кажется, я 'заснул' и забыл, какой пак мы копируем. Начнем заново. Пожалуйста, отправь мне стикер еще раз.")
+        await state.clear()
+        return
+    # ---
+
     original_set_name = user_data.get("original_set_name")
     new_name = message.text.strip()
     user_id = message.from_user.id
@@ -97,6 +110,11 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 )
             )
 
+        if not first_batch_stickers:
+            await msg.edit_text("❌ В этом паке нет стикеров.")
+            await state.clear()
+            return
+
         await bot.create_new_sticker_set(
             user_id=user_id,
             name=new_name,
@@ -105,14 +123,15 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=main_format
         )
 
-        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание 10 секунд...")
-        await asyncio.sleep(10)  # 10 секунд после создания пака
+        # (!!!) ИЗМЕНЕНИЕ: ЗАДЕРЖКА 12 СЕКУНД
+        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание ~12 секунд...")
+        await asyncio.sleep(12)  # 12 секунд после создания пака
 
-        # Добавляем остальные стикеры пачками с задержкой 10 секунд
+        # Добавляем остальные стикеры пачками с задержкой 12 секунд
         if total_stickers > 50:
             remaining_stickers = all_stickers[50:]
             
-            # Добавляем пачками по 10 стикеров с задержкой 10 секунд
+            # Добавляем пачками по 10 стикеров с задержкой 12 секунд
             batch_size = 10
             for i in range(0, len(remaining_stickers), batch_size):
                 batch = remaining_stickers[i:i + batch_size]
@@ -141,10 +160,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 
                 current_progress = 50 + i + len(batch)
                 
-                # Задержка 10 секунд между пачками
+                # (!!!) ИЗМЕНЕНИЕ: ЗАДЕРЖКА 12 СЕКУНД
                 if current_progress < total_stickers:
-                    await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание 10 секунд...")
-                    await asyncio.sleep(10)
+                    await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание ~12 секунд...")
+                    await asyncio.sleep(12) # 12 секунд между пачками
 
         await msg.edit_text(f"✅ Готово!\nСмешанный стикерпак создан!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
