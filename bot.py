@@ -105,14 +105,14 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             sticker_format=main_format
         )
 
-        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание 5 секунд...")
-        await asyncio.sleep(5)  # 5 секунд после создания пака
+        await msg.edit_text(f"✅ Создан пак с первыми {len(first_batch)} стикерами\nОжидание 10 секунд...")
+        await asyncio.sleep(10)  # 10 секунд после создания пака
 
-        # Добавляем остальные стикеры пачками с оптимальными задержками
+        # Добавляем остальные стикеры пачками с задержкой 10 секунд
         if total_stickers > 50:
             remaining_stickers = all_stickers[50:]
             
-            # Добавляем пачками по 10 стикеров с задержкой 5 секунд
+            # Добавляем пачками по 10 стикеров с задержкой 10 секунд
             batch_size = 10
             for i in range(0, len(remaining_stickers), batch_size):
                 batch = remaining_stickers[i:i + batch_size]
@@ -141,10 +141,10 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
                 
                 current_progress = 50 + i + len(batch)
                 
-                # Задержка 5 секунд между пачками
+                # Задержка 10 секунд между пачками
                 if current_progress < total_stickers:
-                    await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание 5 секунд...")
-                    await asyncio.sleep(5)
+                    await msg.edit_text(f"✅ Добавлено {current_progress}/{total_stickers}\nОжидание 10 секунд...")
+                    await asyncio.sleep(10)
 
         await msg.edit_text(f"✅ Готово!\nСмешанный стикерпак создан!\nt.me/addstickers/{new_name}\nСтикеров: {total_stickers}")
 
