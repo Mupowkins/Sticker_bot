@@ -12,13 +12,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InputSticker
 from aiogram.exceptions import TelegramBadRequest
-# ИСПРАВЛЕНИЕ: Добавляем DefaultBotProperties для ParseMode
 from aiogram.client.bot import DefaultBotProperties
 
 BOT_TOKEN = "8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk"
 
 logging.basicConfig(level=logging.INFO)
-# ИСПРАВЛЕНИЕ: Возвращаем ParseMode.HTML, чтобы бот понимал <b>, <i> и т.д.
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
@@ -82,13 +80,12 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
         elif original_set.is_video:
             sticker_format = "video"
 
-        # --- (!!!) НОВАЯ ЛОГИКА ЗАДЕРЖЕК V3 (по твоему ТЗ) (!!!) ---
+        # --- (!!!) НОВАЯ ЛОГИКА (по 1 стикеру в 1.1с) (!!!) ---
 
         # Функция-помощник для конвертации в InputSticker
         def convert_sticker(sticker):
             if not sticker.file_id:
                 return None
-            # ИСПРАВЛЕНИЕ: Используем '🤩' и 'format'
             return InputSticker(
                 sticker=sticker.file_id,
                 emoji_list=["🤩"], # Все стикеры с 🤩
@@ -96,7 +93,7 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             )
 
         # ПАЧКА 1: (1-50 стикеров)
-        batch_1_objects = [convert_sticker(s) for s in all_stickers[:50] if s.file_id]
+        batch_1_objects = [convert_sticker(s) for s in all_stickers[:50] if s and s.file_id]
         
         if not batch_1_objects:
             await msg.edit_text("❌ В этом паке нет стикеров.")
@@ -120,64 +117,52 @@ async def get_new_name_and_copy(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # ЗАДЕРЖКА 1: Ровно 30 секунд
-        await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю 30 секунд...</b>")
-        await asyncio.sleep(30.0)
+        # ЗАДЕРЖКА 1: Ровно 10 секунд
+        await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю 10 секунд...</b>")
+        await asyncio.sleep(10.0)
 
-        # ПАЧКИ 2, 3, 4 (51-80, 81-100, 101-120)
-        # (start_index, end_index, delay_after)
-        batches_config = [
-            (50, 80, 30.0),  # 51-80
-            (80, 100, 30.0), # 81-100
-            (100, 120, 30.0) # 101-120 (ставим 30, хоть это и последняя)
-        ]
-
-        for start_idx, end_idx, delay in batches_config:
+        # ПАЧКА 2: (51-120) - по 1 стикеру в 1.1с
+        
+        # Берем срез всех остальных стикеров (с 50-го индекса)
+        remaining_stickers = all_stickers[50:]
+        
+        for i, sticker in enumerate(remaining_stickers):
             
-            # Проверяем, есть ли стикеры в этом диапазоне
-            if start_idx >= total_stickers:
-                break 
-                
-            batch = all_stickers[start_idx:end_idx]
-            if not batch:
-                break
-            
-            # Добавляем стикеры из этой пачки
-            for sticker in batch:
-                sticker_obj = convert_sticker(sticker)
-                if sticker_obj:
-                    # Добавляем по одному, чтобы не словить лимит на размер пачки
-                    try:
-                        await bot.add_sticker_to_set(
-                            user_id=user_id,
-                            name=new_name,
-                            sticker=sticker_obj
-                        )
-                    except TelegramBadRequest as e:
-                        # Ловим флуд-контроль ДАЖЕ внутри пачки
-                        if "Flood control" in str(e) or "Too Many Requests" in str(e):
-                            await msg.edit_text(f"❗️ Временный флуд-контроль внутри пачки... Сплю 10с.")
-                            await asyncio.sleep(10.0)
-                            # Повторная попытка
-                            await bot.add_sticker_to_set(
-                                user_id=user_id,
-                                name=new_name,
-                                sticker=sticker_obj
-                            )
-                        else:
-                            raise e # Поднимаем другую ошибку
+            sticker_obj = convert_sticker(sticker)
+            if not sticker_obj:
+                continue # Пропускаем битый стикер
 
+            # Добавляем ОДИН стикер
+            try:
+                await bot.add_sticker_to_set(
+                    user_id=user_id,
+                    name=new_name,
+                    sticker=sticker_obj
+                )
+            except TelegramBadRequest as e:
+                if "Flood control" in str(e) or "Too Many Requests" in str(e):
+                    await msg.edit_text(f"❗️ Флуд-контроль! (на {current_total_added+1}-м стикере)\nСплю 15с и пробую снова...")
+                    await asyncio.sleep(15.0)
+                    # Повторная попытка
+                    await bot.add_sticker_to_set(
+                        user_id=user_id,
+                        name=new_name,
+                        sticker=sticker_obj
+                    )
+                else:
+                    raise e # Поднимаем другую ошибку
+            
             # Считаем, сколько всего добавлено
-            current_total_added = min(end_idx, total_stickers)
+            # i начинается с 0 (это 51-й), +1 (т.к. добавили), +50 (т.к. уже было)
+            current_total_added = i + 1 + 50
             
-            # Проверяем, не закончили ли мы
-            if current_total_added >= total_stickers:
-                break # Закончили, выходим из цикла
-            
-            # ЗАДЕРЖКА: Ровно 30 секунд
-            await msg.edit_text(f"✅ Добавлено {current_total_added}/{total_stickers} стикеров.\n<b>Ожидаю {delay} секунд...</b>")
-            if delay > 0:
-                await asyncio.sleep(delay)
+            # --- Обновление прогресса (по твоему ТЗ) ---
+            # Обновляем ТОЛЬКО каждые 10 стикеров (60, 70, 80...)
+            if current_total_added % 10 == 0:
+                await msg.edit_text(f"⏳ Добавлено {current_total_added}/{total_stickers} стикеров...")
+
+            # ЗАДЕРЖКА: 1.1 секунды
+            await asyncio.sleep(1.1)
 
         # --- Конец цикла ---
 
