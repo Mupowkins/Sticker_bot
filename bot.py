@@ -12,17 +12,11 @@ from aiogram.filters import CommandStart
 from aiogram.types import BufferedInputFile, InputSticker
 
 # --- Конфигурация ---
-# Токен бота БЕРЕТСЯ из переменной окружения BOT_TOKEN
-# Его не нужно вписывать сюда, а нужно указать на сервере
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_VERSION = "v1.1 (fix: link/sticker parsing)"  # <--- НОВОЕ: Версия бота
 
-# Название и суффикс для новых паков
 NEW_PACK_TITLE = "ТГ Канал - @Mupowkins"
-# ВНИМАНИЕ: Это имя пользователя вашего бота.
-# Оно ДОЛЖНО совпадать с реальным @username бота
 BOT_USERNAME_SUFFIX = "_by_Mupowkins_BOT" 
-
-# Лимит стикеров (Telegram позволяет до 120)
 STICKER_LIMIT = 120
 
 # Настройка логирования
@@ -40,11 +34,13 @@ async def cmd_start(message: types.Message):
     """
     Обработчик команды /start
     """
+    # <--- ИЗМЕНЕНО: Добавлена строка с версией
     await message.answer(
         "Привет! 👋\n\n"
         "Я бот для копирования стикерпаков.\n"
         "Просто отправь мне стикер из пака, который нужно скопировать, "
-        "или ссылку на него (например, `t.me/addstickers/MyPack`)."
+        "или ссылку на него (например, `t.me/addstickers/MyPack`).\n\n"
+        f"<i>Версия: {BOT_VERSION}</i>"
     )
 
 
@@ -55,7 +51,7 @@ async def handle_sticker(message: types.Message):
     """
     if not message.sticker.set_name:
         await message.answer(
-            "⚠️ **Ошибка:**\n"
+            "⚠️ <b>Ошибка:</b>\n"
             "Этот стикер не является частью какого-либо пака "
             "(возможно, это 'кастомный эмодзи' или одиночный стикер). "
             "Я не могу его скопировать."
@@ -67,14 +63,13 @@ async def handle_sticker(message: types.Message):
     await process_sticker_pack(message, pack_name)
 
 
-@router.message(F.text.regexp(r't\.me/addstickers/(\S+)'))
+@router.message(F.text.regexp(r'.*t\.me/addstickers/([\w\d_]+)'))
 async def handle_link(message: types.Message):
     """
     Обработчик ссылки на стикерпак
     """
     try:
-        # Извлекаем имя пака из URL
-        pack_name = re.search(r't\.me/addstickers/(\S+)', message.text).group(1)
+        pack_name = re.search(r't\.me/addstickers/([\w\d_]+)', message.text).group(1)
     except Exception:
         await message.answer("⚠️ Не могу распознать ссылку. "
                              "Убедитесь, что она в формате `t.me/addstickers/PackName`")
@@ -90,8 +85,8 @@ async def handle_other_messages(message: types.Message):
     Обработчик любого другого текста, который не является ссылкой
     """
     await message.answer("Я не понимаю 😔\n"
-                         "Пожалуйста, отправь мне **стикер** из пака "
-                         "или **ссылку** на стикерпак.")
+                         "Пожалуйста, отправь мне <b>стикер</b> из пака "
+                         "или <b>ссылку</b> на стикерпак.")
 
 
 # --- Основная логика копирования ---
@@ -102,42 +97,35 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
     """
     bot = message.bot
     try:
-        await message.answer(f"✅ Получил пак: `{pack_name}`\n"
-                             "Начинаю копирование. Это займет 1-2 минуты...",
-                             parse_mode=ParseMode.MARKDOWN_V2)
+        await message.answer(f"✅ Получил пак: <code>{pack_name}</code>\n"
+                             "Начинаю копирование. Это займет 1-2 минуты...")
 
         # 1. Получаем информацию об исходном паке
         sticker_set = await bot.get_sticker_set(pack_name)
 
         if not sticker_set.stickers:
-            await message.answer("⚠️ **Ошибка:** В этом паке нет стикеров.")
+            await message.answer("⚠️ <b>Ошибка:</b> В этом паке нет стикеров.")
             return
             
-        # 2. Проверяем формат пака (static, animated, video)
-        # Мы НЕ МОЖЕМ смешивать форматы в одном паке
+        # 2. Проверяем формат пака
         pack_format = sticker_set.sticker_format
         logger.info(f"Формат пака: {pack_format}. "
                     f"Количество стикеров: {len(sticker_set.stickers)}")
                     
         if pack_format == 'unknown':
-            await message.answer("⚠️ **Ошибка:** Неизвестный формат стикерпака. "
+            await message.answer("⚠️ <b>Ошибка:</b> Неизвестный формат стикерпака. "
                                  "Не могу скопировать.")
             return
 
         # 3. Генерируем имя для нового пака
-        # Имя должно быть уникальным и заканчиваться на _by_<bot_username>
-        # Обрезаем имя, если оно слишком длинное (лимит 64)
         max_base_name_len = 64 - len(BOT_USERNAME_SUFFIX)
         new_pack_name = f"{sticker_set.name[:max_base_name_len]}{BOT_USERNAME_SUFFIX}"
 
-        # 4. Скачиваем ПЕРВЫЙ стикер (он нужен для создания пака)
+        # 4. Скачиваем ПЕРВЫЙ стикер
         first_sticker = sticker_set.stickers[0]
-        
-        # Скачиваем файл стикера
         file_info = await bot.get_file(first_sticker.file_id)
         file_content = await bot.download_file(file_info.file_path)
         
-        # Оборачиваем в InputSticker
         first_sticker_file = InputSticker(
             sticker=BufferedInputFile(file_content, filename=f"0.{pack_format}"),
             emoji_list=[first_sticker.emoji]
@@ -157,11 +145,10 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
             if "sticker set name is already occupied" in e.message:
                 logger.warning(f"Имя {new_pack_name} уже занято.")
                 await message.answer(
-                    "⚠️ **Ошибка:**\n"
-                    f"Пак с именем `{new_pack_name}` уже существует. "
+                    f"⚠️ <b>Ошибка:</b>\n"
+                    f"Пак с именем <code>{new_pack_name}</code> уже существует. "
                     "Вероятно, вы уже копировали этот пак.\n"
-                    f"Вот ссылка на него: t.me/addstickers/{new_pack_name}",
-                    parse_mode=ParseMode.MARKDOWN_V2
+                    f"Вот ссылка на него: t.me/addstickers/{new_pack_name}"
                 )
                 return
             elif "STICKERSET_NAME_INVALID" in e.message:
@@ -171,23 +158,23 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
                     "совпадает с реальным @username бота!"
                 )
                 await message.answer(
-                    "**КРИТИЧЕСКАЯ ОШИБКА API**\n"
+                    "<b>КРИТИЧЕСКАЯ ОШИБКА API</b>\n"
                     "Имя пака не принято Telegram. "
                     "Вероятная причина: имя пользователя бота в коде "
-                    f"(`{BOT_USERNAME_SUFFIX}`) "
+                    f"(<code>{BOT_USERNAME_SUFFIX}</code>) "
                     "не совпадает с реальным именем вашего бота."
                 )
                 return
             else:
                 logger.error(f"Неожиданная ошибка Telegram: {e}")
-                await message.answer(f"**Ошибка Telegram API:**\n`{e.message}`")
+                await message.answer(f"<b>Ошибка Telegram API:</b>\n<code>{e.message}</code>")
                 return
 
         await message.answer(f"✅ Пак успешно создан. "
                              f"Начинаю добавление остальных стикеров... "
                              f"(0/{len(sticker_set.stickers[1:STICKER_LIMIT])})")
 
-        # 6. Добавляем ОСТАЛЬНЫЕ стикеры (с 1-го по 119-й)
+        # 6. Добавляем ОСТАЛЬНЫЕ стикеры
         counter = 0
         total_to_copy = len(sticker_set.stickers[1:STICKER_LIMIT])
 
@@ -210,14 +197,10 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
                 )
                 
                 counter += 1
-                
-                # Задержка для обхода Flood Control
-                await asyncio.sleep(0.7) 
+                await asyncio.sleep(0.7) # Задержка для обхода Flood Control
 
                 # Оповещаем пользователя о прогрессе каждые 20 стикеров
                 if counter % 20 == 0 or counter == total_to_copy:
-                    # Используем suppress, чтобы не спамить ошибками, 
-                    # если сообщение не изменилось
                     with suppress(TelegramBadRequest):
                         await message.edit_text(
                             f"✅ Пак успешно создан. "
@@ -227,25 +210,24 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
 
             except Exception as e:
                 logger.error(f"Не удалось добавить стикер {i+1}: {e}")
-                await message.answer(f"⚠️ Не удалось добавить стикер №{i+1}: `{e}`")
-                await asyncio.sleep(1) # Доп. задержка при ошибке
+                await message.answer(f"⚠️ Не удалось добавить стикер №{i+1}: <code>{e}</code>")
+                await asyncio.sleep(1) 
 
         # 7. Отправляем финальную ссылку
         new_pack_link = f"https://t.me/addstickers/{new_pack_name}"
         await message.answer(
-            f"🎉 **Готово!**\n\n"
+            f"🎉 <b>Готово!</b>\n\n"
             f"Все {counter + 1} стикеров скопированы.\n"
-            f"Ваш новый пак: **{new_pack_link}**"
+            f"Ваш новый пак: <b>{new_pack_link}</b>"
         )
 
     except TelegramBadRequest as e:
         logger.error(f"Ошибка API при обработке {pack_name}: {e}")
-        await message.answer(f"**Ошибка Telegram API:**\n`{e.message}`\n\n"
-                             "Возможно, пак защищен от копирования или удален.",
-                             parse_mode=ParseMode.MARKDOWN_V2)
+        await message.answer(f"<b>Ошибка Telegram API:</b>\n<code>{e.message}</code>\n\n"
+                             "Возможно, пак защищен от копирования или удален.")
     except Exception as e:
         logger.error(f"Неизвестная ошибка при обработке {pack_name}: {e}")
-        await message.answer(f"**Неизвестная ошибка:**\n`{e}`")
+        await message.answer(f"<b>Неизвестная ошибка:</b>\n<code>{e}</code>")
 
 
 # --- Запуск бота ---
