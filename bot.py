@@ -19,11 +19,8 @@ from aiogram.types import BufferedInputFile, InputSticker
 BOT_TOKEN = "8094703198:AAGBMM1a-MczaWtNZ0cjMmndImO_mPip_8I"
 # 🔴 ----------------- 🔴
 #
-# Старая, безопасная строка:
-# BOT_TOKEN = os.getenv("BOT_TOKEN") 
-#
 
-BOT_VERSION = "v1.1 (fix: link/sticker parsing)" 
+BOT_VERSION = "v1.2 (fix: pack format detection)"  # <--- ИЗМЕНЕНО: Версия
 
 NEW_PACK_TITLE = "ТГ Канал - @Mupowkins"
 BOT_USERNAME_SUFFIX = "_by_Mupowkins_BOT" 
@@ -117,26 +114,36 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
             return
             
         # 2. Проверяем формат пака
-        pack_format = sticker_set.sticker_format
+        # ---
+        # ИСПРАВЛЕНО: Используем is_video и is_animated для надежного
+        # определения формата пака (старого и нового образца).
+        # ---
+        if sticker_set.is_video:
+            pack_format = 'video'
+        elif sticker_set.is_animated:
+            pack_format = 'animated'
+        else:
+            pack_format = 'static'
+            
         logger.info(f"Формат пака: {pack_format}. "
                     f"Количество стикеров: {len(sticker_set.stickers)}")
                     
-        if pack_format == 'unknown':
-            await message.answer("⚠️ <b>Ошибка:</b> Неизвестный формат стикерпака. "
-                                 "Не могу скопировать.")
-            return
-
         # 3. Генерируем имя для нового пака
         max_base_name_len = 64 - len(BOT_USERNAME_SUFFIX)
-        new_pack_name = f"{sticker_set.name[:max_base_name_len]}{BOT_USERNAME_SUFFIX}"
+        # Исключаем невалидные символы из имени, Telegram их не любит
+        clean_name = re.sub(r'[^a-zA-Z0-9_]', '', sticker_set.name)
+        new_pack_name = f"{clean_name[:max_base_name_len]}{BOT_USERNAME_SUFFIX}"
 
         # 4. Скачиваем ПЕРВЫЙ стикер
         first_sticker = sticker_set.stickers[0]
         file_info = await bot.get_file(first_sticker.file_id)
         file_content = await bot.download_file(file_info.file_path)
         
+        # Определяем расширение файла для filename
+        file_ext = 'webm' if pack_format == 'video' else ('tgs' if pack_format == 'animated' else 'webp')
+        
         first_sticker_file = InputSticker(
-            sticker=BufferedInputFile(file_content, filename=f"0.{pack_format}"),
+            sticker=BufferedInputFile(file_content, filename=f"0.{file_ext}"),
             emoji_list=[first_sticker.emoji]
         )
 
@@ -194,7 +201,7 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
                 file_content = await bot.download_file(file_info.file_path)
                 
                 sticker_file = InputSticker(
-                    sticker=BufferedInputFile(file_content, filename=f"{i+1}.{pack_format}"),
+                    sticker=BufferedInputFile(file_content, filename=f"{i+1}.{file_ext}"),
                     emoji_list=[sticker.emoji]
                 )
 
@@ -213,55 +220,4 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
                     with suppress(TelegramBadRequest):
                         await message.edit_text(
                             f"✅ Пак успешно создан. "
-                            f"Начинаю добавление остальных стикеров... "
-                            f"({counter}/{total_to_copy})"
-                        )
-
-            except Exception as e:
-                logger.error(f"Не удалось добавить стикер {i+1}: {e}")
-                await message.answer(f"⚠️ Не удалось добавить стикер №{i+1}: <code>{e}</code>")
-                await asyncio.sleep(1) 
-
-        # 7. Отправляем финальную ссылку
-        new_pack_link = f"https://t.me/addstickers/{new_pack_name}"
-        await message.answer(
-            f"🎉 <b>Готово!</b>\n\n"
-            f"Все {counter + 1} стикеров скопированы.\n"
-            f"Ваш новый пак: <b>{new_pack_link}</b>"
-        )
-
-    except TelegramBadRequest as e:
-        logger.error(f"Ошибка API при обработке {pack_name}: {e}")
-        await message.answer(f"<b>Ошибка Telegram API:</b>\n<code>{e.message}</code>\n\n"
-                             "Возможно, пак защищен от копирования или удален.")
-    except Exception as e:
-        logger.error(f"Неизвестная ошибка при обработке {pack_name}: {e}")
-        await message.answer(f"<b>Неизвестная ошибка:</b>\n<code>{e}</code>")
-
-
-# --- Запуск бота ---
-
-async def main():
-    """
-    Главная функция запуска бота
-    """
-    if not BOT_TOKEN:
-        logger.critical("Токен не найден! (Он должен быть вписан в код)")
-        return
-
-    bot = Bot(token=BOT_TOKEN, 
-              default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
-    dp.include_router(router)
-
-    # Запускаем бота
-    logger.info("Бот запускается...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Бот остановлен вручную.")
+                            f"Начинаю добавление остальных стике
