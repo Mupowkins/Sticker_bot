@@ -12,8 +12,18 @@ from aiogram.filters import CommandStart
 from aiogram.types import BufferedInputFile, InputSticker
 
 # --- Конфигурация ---
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-BOT_VERSION = "v1.1 (fix: link/sticker parsing)"  # <--- НОВОЕ: Версия бота
+# 
+# 🔴 ВНИМАНИЕ! 🔴
+# Токен вписан прямо в код по вашему запросу.
+# НЕ ЗАГРУЖАЙТЕ ЭТОТ ФАЙЛ В ПУБЛИЧНЫЙ GITHUB!
+BOT_TOKEN = "8094703198:AAGBMM1a-MczaWtNZ0cjMmndImO_mPip_8I"
+# 🔴 ----------------- 🔴
+#
+# Старая, безопасная строка:
+# BOT_TOKEN = os.getenv("BOT_TOKEN") 
+#
+
+BOT_VERSION = "v1.1 (fix: link/sticker parsing)" 
 
 NEW_PACK_TITLE = "ТГ Канал - @Mupowkins"
 BOT_USERNAME_SUFFIX = "_by_Mupowkins_BOT" 
@@ -34,7 +44,6 @@ async def cmd_start(message: types.Message):
     """
     Обработчик команды /start
     """
-    # <--- ИЗМЕНЕНО: Добавлена строка с версией
     await message.answer(
         "Привет! 👋\n\n"
         "Я бот для копирования стикерпаков.\n"
@@ -237,7 +246,7 @@ async def main():
     Главная функция запуска бота
     """
     if not BOT_TOKEN:
-        logger.critical("Токен не найден! Установите переменную окружения BOT_TOKEN.")
+        logger.critical("Токен не найден! (Он должен быть вписан в код)")
         return
 
     bot = Bot(token=BOT_TOKEN, 
