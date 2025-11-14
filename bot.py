@@ -5,7 +5,7 @@ import asyncio
 from telegram import Update, InputSticker, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, AIORateLimiter
 
-TG_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TG_TOKEN = os.getenv("8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk")
 PACK_SUFFIX = "_by_Mupowkins_BOT"
 PACK_TITLE = "ТГ Канал - @Mupowkins"
 MAX_STICKERS = 120
@@ -26,14 +26,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
 
     if sticker:
-        # Получение инфо о стикере
         sticker_set = await context.bot.get_sticker_set(sticker.set_name)
         await process_sticker_set(update, context, sticker_set)
     elif "addstickers" in text:
         match = re.search(r"(https://t.me/addstickers/S+)", text)
         if match:
             pack_url = match.group(1)
-            # По ссылке получить имя сета
             set_name = pack_url.split("/")[-1]
             sticker_set = await context.bot.get_sticker_set(set_name)
             await process_sticker_set(update, context, sticker_set)
@@ -49,26 +47,19 @@ async def process_sticker_set(update, context, sticker_set):
     await update.message.reply_text(f"Создаю копию сета...
 Новая ссылка будет: {new_link}")
 
-    # Получаем список стикеров, не более MAX_STICKERS
     stickers = sticker_set.stickers[:MAX_STICKERS]
     new_stickers = []
-    # Набор эмодзи для копирования (если их несколько — можно выбрать первые попавшиеся)
     for st in stickers:
         emoji = st.emoji or "🙂"
-        if st.is_animated:
-            f = await context.bot.get_file(st.file_id)
-            f_path = await f.download_to_drive()
-            new_stickers.append(InputSticker(sticker=InputFile(f_path), emoji_list=[emoji], type="animated"))
-        elif st.is_video:
-            f = await context.bot.get_file(st.file_id)
-            f_path = await f.download_to_drive()
-            new_stickers.append(InputSticker(sticker=InputFile(f_path), emoji_list=[emoji], type="video"))
-        else:  # обычный .webp
-            f = await context.bot.get_file(st.file_id)
-            f_path = await f.download_to_drive()
-            new_stickers.append(InputSticker(sticker=InputFile(f_path), emoji_list=[emoji], type="regular"))
+        f = await context.bot.get_file(st.file_id)
+        f_path = await f.download_to_drive()
+        sticker_type = "regular"
+        if hasattr(st, "is_animated") and st.is_animated:
+            sticker_type = "animated"
+        elif hasattr(st, "is_video") and st.is_video:
+            sticker_type = "video"
+        new_stickers.append(InputSticker(sticker=InputFile(f_path), emoji_list=[emoji], type=sticker_type))
 
-    # Создаём новый стикер пак
     user_id = update.effective_user.id
     try:
         await context.bot.create_new_sticker_set(
