@@ -1,10 +1,11 @@
 services:
-- type: web
-  name: telegram-bot
-  env: python
-  plan: free
-  buildCommand: pip install -r requirements.txt
-  startCommand: python bot.py
-  envVars:
-    - key: 8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk
-      sync: false
+  - type: worker  # Используем 'worker', так как боту не нужен веб-сервер
+    name: telegram-sticker-bot
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot.py"
+    envVars:
+      - key: BOT_TOKEN
+        sync: false  # 'sync: false' означает, что вы введете его в дашборде Render
+      - key: PYTHON_VERSION
+        value: "3.11.5"
