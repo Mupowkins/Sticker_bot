@@ -14,7 +14,7 @@ from aiogram.types import BufferedInputFile, InputSticker
 # --- Конфигурация ---
 # Токен бота БЕРЕТСЯ из переменной окружения BOT_TOKEN
 # Его не нужно вписывать сюда, а нужно указать на сервере
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk")
 
 # Название и суффикс для новых паков
 NEW_PACK_TITLE = "ТГ Канал - @Mupowkins"
