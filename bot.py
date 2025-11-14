@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import os
+import os  # <--- Убедитесь, что os импортирован
 import re
 from contextlib import suppress
 
@@ -13,14 +13,15 @@ from aiogram.types import BufferedInputFile, InputSticker
 
 # --- Конфигурация ---
 # 
-# 🔴 ВНИМАНИЕ! 🔴
-# Токен вписан прямо в код по вашему запросу.
-# НЕ ЗАГРУЖАЙТЕ ЭТОТ ФАЙЛ В ПУБЛИЧНЫЙ GITHUB!
-BOT_TOKEN = "8094703198:AAGBMM1a-MczaWtNZ0cjMmndImO_mPip_8I"
-# 🔴 ----------------- 🔴
+# ✅ ВОЗВРАЩАЕМ БЕЗОПАСНЫЙ МЕТОД ✅
+# Бот будет читать токен из настроек Render (Environment)
+BOT_TOKEN = os.getenv("BOT_TOKEN") 
+# 
+# 🔴 ОПАСНЫЙ КОД УДАЛЕН 🔴
+# BOT_TOKEN = "8094703198:AAG..."
 #
 
-BOT_VERSION = "v1.2 (fix: pack format detection)"  # <--- ИЗМЕНЕНО: Версия
+BOT_VERSION = "v1.3 (fix: security + pack format)"  # <--- Новая версия
 
 NEW_PACK_TITLE = "ТГ Канал - @Mupowkins"
 BOT_USERNAME_SUFFIX = "_by_Mupowkins_BOT" 
@@ -114,10 +115,6 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
             return
             
         # 2. Проверяем формат пака
-        # ---
-        # ИСПРАВЛЕНО: Используем is_video и is_animated для надежного
-        # определения формата пака (старого и нового образца).
-        # ---
         if sticker_set.is_video:
             pack_format = 'video'
         elif sticker_set.is_animated:
@@ -130,7 +127,6 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
                     
         # 3. Генерируем имя для нового пака
         max_base_name_len = 64 - len(BOT_USERNAME_SUFFIX)
-        # Исключаем невалидные символы из имени, Telegram их не любит
         clean_name = re.sub(r'[^a-zA-Z0-9_]', '', sticker_set.name)
         new_pack_name = f"{clean_name[:max_base_name_len]}{BOT_USERNAME_SUFFIX}"
 
@@ -139,7 +135,6 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
         file_info = await bot.get_file(first_sticker.file_id)
         file_content = await bot.download_file(file_info.file_path)
         
-        # Определяем расширение файла для filename
         file_ext = 'webm' if pack_format == 'video' else ('tgs' if pack_format == 'animated' else 'webp')
         
         first_sticker_file = InputSticker(
@@ -220,4 +215,56 @@ async def process_sticker_pack(message: types.Message, pack_name: str):
                     with suppress(TelegramBadRequest):
                         await message.edit_text(
                             f"✅ Пак успешно создан. "
-                            f"Начинаю добавление остальных стике
+                            f"Начинаю добавление остальных стикеров... "
+                            f"({counter}/{total_to_copy})"
+                        )
+
+            except Exception as e:
+                logger.error(f"Не удалось добавить стикер {i+1}: {e}")
+                await message.answer(f"⚠️ Не удалось добавить стикер №{i+1}: <code>{e}</code>")
+                await asyncio.sleep(1) 
+
+        # 7. Отправляем финальную ссылку
+        new_pack_link = f"https://t.me/addstickers/{new_pack_name}"
+        await message.answer(
+            f"🎉 <b>Готово!</b>\n\n"
+            f"Все {counter + 1} стикеров скопированы.\n"
+            f"Ваш новый пак: <b>{new_pack_link}</b>"
+        )
+
+    except TelegramBadRequest as e:
+        logger.error(f"Ошибка API при обработке {pack_name}: {e}")
+        await message.answer(f"<b>Ошибка Telegram API:</b>\n<code>{e.message}</code>\n\n"
+                             "Возможно, пак защищен от копирования или удален.")
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка при обработке {pack_name}: {e}")
+        await message.answer(f"<b>Неизвестная ошибка:</b>\n<code>{e}</code>")
+
+
+# --- Запуск бота ---
+
+async def main():
+    """
+    Главная функция запуска бота
+    """
+    if not BOT_TOKEN:
+        # Эта ошибка теперь будет видна, если переменная в Render не найдена
+        logger.critical("Токен не найден! Установите переменную окружения BOT_TOKEN в Render.")
+        return
+
+    bot = Bot(token=BOT_TOKEN, 
+              default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher()
+    dp.include_router(router)
+
+    # Запускаем бота
+    logger.info("Бот запускается...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен вручную.")
