@@ -1,2 +1,1 @@
-aiogram==3.10.0
-Flask==3.0.3
+python-telegram-bot[rate-limiter]>=21.0
