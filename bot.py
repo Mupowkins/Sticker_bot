@@ -3,14 +3,13 @@ import re
 import asyncio
 
 from telegram import Update, InputSticker, InputFile
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, AIORateLimiter
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters, AIORateLimiter
 
-TG_TOKEN = os.getenv("8094703198:AAFzaULimXczgidjUtPlyRTw6z_p-i0xavk")
+TG_TOKEN = os.getenv("TELEGRAM_TOKEN")
 PACK_SUFFIX = "_by_Mupowkins_BOT"
 PACK_TITLE = "ТГ Канал - @Mupowkins"
 MAX_STICKERS = 120
 
-# Получение ссылки на новый стикерпак
 def generate_new_pack_link(original_link):
     username = re.findall(r'addstickers/([A-Za-z0-9_]+)', original_link)
     if username:
@@ -41,9 +40,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пришли ссылку на стикерпак или стикер.")
 
 async def process_sticker_set(update, context, sticker_set):
-    # Генерация новой ссылки и имени
     new_link, new_name = generate_new_pack_link(f"https://t.me/addstickers/{sticker_set.name}")
-
     await update.message.reply_text(f"Создаю копию сета...
 Новая ссылка будет: {new_link}")
 
